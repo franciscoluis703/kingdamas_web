@@ -1127,9 +1127,9 @@ a { color: inherit; text-decoration: none; }
 .legend-profile h2 { margin: 7px 0; color: var(--cream); }
 .legend-profile > b { color: var(--legend-accent, var(--gold)); font-size: 12px; }
 .legend-profile p { color: #899d92; font-size: 12px; line-height: 1.55; }
-.legend-profile-strength, .legend-strength { display: flex; gap: 4px; }
+.legend-profile-strength, .legend-strength { width: min(100%, 380px); display: grid; grid-template-columns: repeat(20, minmax(3px, 1fr)); gap: 3px; }
 .legend-profile-strength { margin: 2px 0 14px; }
-.legend-profile-strength i, .legend-strength i { width: 15px; height: 4px; border-radius: 2px; background: rgba(255,255,255,.09); }
+.legend-profile-strength i, .legend-strength i { width: auto; height: 4px; border-radius: 2px; background: rgba(255,255,255,.09); }
 .legend-profile-strength i.is-filled, .legend-strength i.is-filled { background: var(--legend-accent, var(--gold)); box-shadow: 0 0 7px color-mix(in srgb, var(--legend-accent, #e8b85a) 35%, transparent); }
 .no-elo-badge { padding: 7px 10px; color: #cfae68; border: 1px solid rgba(232,184,90,.18); border-radius: 8px; background: rgba(232,184,90,.06); font-size: 9px; }
 .legend-moves { min-height: 0; padding: 18px 13px; display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
@@ -1168,7 +1168,7 @@ a { color: inherit; text-decoration: none; }
 .legend-road-copy h2 { margin: 3px 0 0; overflow: hidden; color: var(--cream); font-size: 20px; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
 .legend-road-copy > b { color: #9fb0a7; font-size: 12px; }
 .legend-road-copy p { margin: 5px 0 8px; color: #82968b; font-size: 12px; line-height: 1.4; }
-.legend-strength i { width: 18px; }
+.legend-strength i { width: auto; }
 .legend-road-action { min-width: 128px; display: grid; justify-items: end; gap: 8px; }
 .legend-road-action > span { color: #84978d; font-size: 10px; font-weight: 800; text-transform: uppercase; }
 .legend-road-action > i { width: 38px; height: 38px; display: grid; place-items: center; border-radius: 9px; background: rgba(255,255,255,.045); font-style: normal; }

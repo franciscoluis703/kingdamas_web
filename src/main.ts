@@ -5,7 +5,6 @@ import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./c
 import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
 import { applyMove, countPieces, createInitialBoard, getWinner, moveNotation, opponentOf } from "./game/engine";
-import { chooseLegendMove } from "./game/legendAi";
 import { spectatorClockValue } from "./game/spectators";
 import {
   LEGENDS,
@@ -1997,11 +1996,18 @@ function legendRoadCardMarkup(
   unlocked: boolean,
   defeated: boolean,
 ) {
+  const chapter = legend.level <= 5
+    ? "I · Fundamentos"
+    : legend.level <= 10
+      ? "II · Táctica"
+      : legend.level <= 15
+        ? "III · Maestría"
+        : "IV · El Trono";
   const state = defeated ? "is-defeated" : unlocked ? "is-unlocked" : "is-locked";
   return `<article class="legend-road-card ${state}" style="--legend-accent:${legend.accent}">
     <span class="legend-road-level"><i>${legend.level}</i></span>
     <span class="machine-avatar legend-road-avatar">${escapeHtml(legend.sigil)}</span>
-    <div class="legend-road-copy"><small>NIVEL ${legend.level} · ${escapeHtml(legend.difficulty)}</small><h2>${escapeHtml(legend.name)}</h2><b>${escapeHtml(legend.epithet)}</b><p>${escapeHtml(legend.description)}</p><div class="legend-strength" aria-label="Dificultad ${legend.level} de ${LEGENDS.length}">${LEGENDS.map((_, index) => `<i class="${index < legend.level ? "is-filled" : ""}"></i>`).join("")}</div></div>
+    <div class="legend-road-copy"><small>ACTO ${chapter} · NIVEL ${legend.level}</small><h2>${escapeHtml(legend.name)}</h2><b>${escapeHtml(legend.epithet)} · ${escapeHtml(legend.difficulty)}</b><p>${escapeHtml(legend.description)}</p><div class="legend-strength" aria-label="Dificultad ${legend.level} de ${LEGENDS.length}">${LEGENDS.map((_, index) => `<i class="${index < legend.level ? "is-filled" : ""}"></i>`).join("")}</div></div>
     <div class="legend-road-action"><span>${defeated ? "✓ Derrotada" : unlocked ? `${legend.rating.toLocaleString("es-DO")} fuerza` : "Bloqueada"}</span>${unlocked ? `<button class="button ${legend.level === LEGENDS.length ? "button--legend" : "button--outline"} button--small" type="button" data-play-legend="${legend.key}">${defeated ? "Jugar de nuevo" : "Desafiar"}</button>` : `<i aria-label="Nivel bloqueado">🔒</i>`}</div>
     <span class="legend-road-connector" aria-hidden="true"></span>
   </article>`;
@@ -2024,14 +2030,14 @@ async function renderLegendRoadmap(timeControl: TimeControl) {
     ) || LEGENDS[Math.min(unlockedCount - 1, LEGENDS.length - 1)];
     root.innerHTML = appLayout(`<section class="legend-road-page">
       <header class="legend-road-hero">
-        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>DESAFÍO CONTRA LA MÁQUINA</span><h1>Camino de Leyendas</h1><p>Vence a cada rival para abrir el siguiente duelo. La dificultad aumenta desde movimientos formativos hasta cálculo legendario.</p></div>
+        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>20 RIVALES · 4 ACTOS</span><h1>Camino de Leyendas</h1><p>Supera veinte personajes, desde una rival ideal para aprender hasta un soberano casi imposible de vencer. Cada victoria abre el siguiente duelo.</p></div>
         <div class="legend-road-progress"><span>${icon("crown")}</span><p><small>CAMINO COMPLETADO</small><b>${defeatedCount} <i>/ ${LEGENDS.length}</i></b><em><i style="width:${(defeatedCount / LEGENDS.length) * 100}%"></i></em></p></div>
       </header>
       <section class="legend-road-toolbar panel"><div><span class="section-kicker">RELOJ POR JUGADOR</span><div>${TIME_CONTROLS.map((minutes) => `<button class="${minutes === timeControl ? "is-active" : ""}" type="button" data-legend-road-time="${minutes}">${minutes} min</button>`).join("")}</div></div><p><b>Práctica sin riesgo</b><small>Estas partidas no modifican tu Elo Damas.</small></p>${nextLegend ? `<button class="button button--legend" type="button" data-play-legend="${nextLegend.key}">${icon("play")} Continuar con ${escapeHtml(nextLegend.name)}</button>` : ""}</section>
       <section class="legend-roadmap" aria-label="Progresión de leyendas">
         ${LEGENDS.map((legend, index) => legendRoadCardMarkup(legend, index < unlockedCount, defeated.has(legend.key))).join("")}
       </section>
-      <aside class="legend-road-help"><span>i</span><p><b>Cómo avanza el camino</b><small>Cada victoria queda guardada en tu cuenta y desbloquea la siguiente leyenda en todos tus dispositivos.</small></p></aside>
+      <aside class="legend-road-help"><span>i</span><p><b>Cuatro actos, veinte leyendas</b><small>Fundamentos, Táctica, Maestría y El Trono. Cada victoria queda guardada y desbloquea el siguiente personaje en todos tus dispositivos.</small></p></aside>
     </section>`, "game");
     bindNavigation();
     root.querySelectorAll<HTMLButtonElement>("[data-legend-road-time]").forEach((button) => {
@@ -2092,6 +2098,8 @@ async function renderLegendGame(
   const moves: Array<{ player: Side; notation: string }> = [];
   let clockTimer = 0;
   let machineTimer = 0;
+  let aiWorker: Worker | null = null;
+  let aiRequestId = 0;
   let board: CmCheckersboard | null = null;
   let victoryRecorded = false;
   let nextLegendUnlocked = legendIndex(legend.key) + 1 < unlockedBefore;
@@ -2156,6 +2164,8 @@ async function renderLegendGame(
     endReason = reason;
     thinking = false;
     window.clearTimeout(machineTimer);
+    aiWorker?.terminate();
+    aiWorker = null;
     renderState();
     if (nextWinner === humanSide && !victoryRecorded) {
       void recordLegendVictory();
@@ -2196,13 +2206,50 @@ async function renderLegendGame(
     if (currentPlayer === machineSide) scheduleMachineMove();
   }
 
+  function calculateMachineMove() {
+    const boardSnapshot = position;
+    const requestId = ++aiRequestId;
+    aiWorker?.terminate();
+    const worker = new Worker(
+      new URL("./game/legendAi.worker.ts", import.meta.url),
+      { type: "module", name: "kingdamas-legend-ai" },
+    );
+    aiWorker = worker;
+    return new Promise<LegalMove | null>((resolve) => {
+      const complete = (move: LegalMove | null) => {
+        if (aiWorker === worker) aiWorker = null;
+        worker.terminate();
+        resolve(move);
+      };
+      worker.addEventListener("message", (event: MessageEvent<{ requestId: number; move: LegalMove | null }>) => {
+        if (event.data.requestId === requestId) complete(event.data.move);
+      });
+      worker.addEventListener("error", () => {
+        worker.terminate();
+        if (aiWorker === worker) aiWorker = null;
+        void import("./game/legendAi")
+          .then(({ chooseLegendMove }) => complete(
+            chooseLegendMove(boardSnapshot, machineSide, legend.key),
+          ))
+          .catch(() => complete(null));
+      }, { once: true });
+      worker.postMessage({
+        requestId,
+        board: boardSnapshot,
+        player: machineSide,
+        difficultyKey: legend.key,
+      });
+    });
+  }
+
   function scheduleMachineMove() {
     if (status !== "active" || currentPlayer !== machineSide) return;
     thinking = true;
     renderState();
-    machineTimer = window.setTimeout(() => {
+    machineTimer = window.setTimeout(async () => {
       if (status !== "active" || currentPlayer !== machineSide) return;
-      const move = chooseLegendMove(position, machineSide, legend.key);
+      const move = await calculateMachineMove();
+      if (status !== "active" || currentPlayer !== machineSide) return;
       thinking = false;
       if (!move) {
         finish(humanSide, "board");
@@ -2308,6 +2355,8 @@ async function renderLegendGame(
     board?.destroy();
     window.clearInterval(clockTimer);
     window.clearTimeout(machineTimer);
+    aiWorker?.terminate();
+    aiWorker = null;
     stopBackgroundSound();
   };
 }

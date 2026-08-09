@@ -74,10 +74,15 @@ describe("motor 10×10 del cliente", () => {
   });
 
   it("ordena las leyendas de menor a mayor dificultad", () => {
+    expect(LEGENDS).toHaveLength(20);
+    expect(new Set(LEGENDS.map((legend) => legend.key))).toHaveProperty("size", 20);
     for (let index = 1; index < LEGENDS.length; index += 1) {
+      expect(LEGENDS[index]!.level).toBe(index + 1);
       expect(LEGENDS[index]!.rating).toBeGreaterThan(LEGENDS[index - 1]!.rating);
       expect(LEGENDS[index]!.ai.depth).toBeGreaterThanOrEqual(LEGENDS[index - 1]!.ai.depth);
       expect(LEGENDS[index]!.ai.nodeBudget).toBeGreaterThan(LEGENDS[index - 1]!.ai.nodeBudget);
     }
+    expect(LEGENDS.at(-1)?.difficulty).toBe("Casi imposible");
+    expect(LEGENDS.at(-1)?.ai.candidatePool).toBe(1);
   });
 });
