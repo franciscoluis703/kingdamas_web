@@ -72,4 +72,14 @@ src/
 
 El backend debe incluir el origen público del frontend en `CLIENT_ORIGINS`. La cookie de sesión requiere HTTPS cuando ambos servicios usan dominios distintos.
 
+El despliegue de Cloudflare Workers está definido en `wrangler.jsonc`. El Worker
+sirve los archivos de `dist/` y reenvía `/api` y `/socket.io` al backend del
+droplet, por lo que el navegador conserva un único origen para sesión y tiempo
+real.
+
+```bash
+npm run build
+wrangler deploy
+```
+
 `cm-chessboard` se distribuye bajo licencia MIT. Consulta `node_modules/cm-chessboard/LICENSE` tras instalar dependencias.
