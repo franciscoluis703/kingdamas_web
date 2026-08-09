@@ -21,6 +21,7 @@ export class CmCheckersboard {
   private legalMoves: LegalMove[] = [];
   private enabled = false;
   private busy = false;
+  private readonly squares: HTMLButtonElement[] = [];
   private readonly pointerEvent = POINTER_EVENTS.pointerdown || "pointerdown";
 
   constructor(
@@ -32,6 +33,7 @@ export class CmCheckersboard {
     this.element.setAttribute("aria-label", "Tablero de damas internacional de 10 por 10");
     this.element.addEventListener(this.pointerEvent, this.handlePointer);
     this.element.addEventListener("keydown", this.handleKeyboard);
+    this.createSquares();
   }
 
   update(board: BoardState, currentPlayer: Side, enabled: boolean) {
@@ -50,6 +52,7 @@ export class CmCheckersboard {
   destroy() {
     this.element.removeEventListener(this.pointerEvent, this.handlePointer);
     this.element.removeEventListener("keydown", this.handleKeyboard);
+    this.squares.length = 0;
     this.element.replaceChildren();
   }
 
@@ -80,6 +83,7 @@ export class CmCheckersboard {
       this.render();
       Promise.resolve(this.options.onMove(move)).finally(() => {
         this.busy = false;
+        this.render();
       });
       return;
     }
@@ -105,10 +109,23 @@ export class CmCheckersboard {
     this.select({ row: Number(target.dataset.row), col: Number(target.dataset.col) });
   };
 
-  private render() {
+  private createSquares() {
     const fragment = document.createDocumentFragment();
+    for (let index = 0; index < 100; index += 1) {
+      const square = document.createElement("button");
+      square.type = "button";
+      square.setAttribute("role", "gridcell");
+      this.squares.push(square);
+      fragment.append(square);
+    }
+    this.element.replaceChildren(fragment);
+  }
+
+  private render() {
     for (let visualRow = 0; visualRow < 10; visualRow += 1) {
       for (let visualCol = 0; visualCol < 10; visualCol += 1) {
+        const square = this.squares[visualRow * 10 + visualCol];
+        if (!square) continue;
         const { row, col } = this.toActual(visualRow, visualCol);
         const piece = this.board[row]?.[col] ?? null;
         const dark = (row + col) % 2 === 1;
@@ -121,8 +138,6 @@ export class CmCheckersboard {
         const canSelect = Boolean(
           this.enabled && piece?.player === this.options.playerSide && this.movesFrom({ row, col }).length,
         );
-        const square = document.createElement("button");
-        square.type = "button";
         square.className = [
           "board-square",
           dark ? "board-square--dark" : "board-square--light",
@@ -132,12 +147,12 @@ export class CmCheckersboard {
         ].filter(Boolean).join(" ");
         square.dataset.row = String(row);
         square.dataset.col = String(col);
-        square.setAttribute("role", "gridcell");
         const captureDescription = destinationMove?.captures
           ? `, destino que captura ${destinationMove.captures} ${destinationMove.captures === 1 ? "ficha" : "fichas"}`
           : "";
         square.setAttribute("aria-label", `${this.squareLabel(row, col, piece)}${captureDescription}`);
         square.tabIndex = dark ? 0 : -1;
+        square.replaceChildren();
 
         if (dark) {
           const number = document.createElement("span");
@@ -170,10 +185,8 @@ export class CmCheckersboard {
           );
           square.append(captureBadge);
         }
-        fragment.append(square);
       }
     }
-    this.element.replaceChildren(fragment);
     this.element.classList.toggle("is-disabled", !this.enabled);
     this.element.setAttribute("aria-busy", String(this.busy));
   }

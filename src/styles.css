@@ -1008,7 +1008,7 @@ a { color: inherit; text-decoration: none; }
 .turn-indicator { display: none; align-items: center; gap: 6px; color: var(--green-bright); font-size: 10px; text-transform: uppercase; }
 .is-turn .turn-indicator { display: flex; }
 .turn-indicator i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-.board-shell { position: relative; width: 100%; aspect-ratio: 1; padding: 10px; contain: layout paint; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: #172b23; box-shadow: 0 25px 60px rgba(0,0,0,.32); }
+.board-shell { position: relative; width: 100%; aspect-ratio: 1; padding: 10px; contain: layout paint; overflow-anchor: none; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: #172b23; box-shadow: 0 25px 60px rgba(0,0,0,.32); }
 .board-shell--legend { border-color: rgba(232,184,90,.3); box-shadow: 0 25px 60px rgba(0,0,0,.32), 0 0 35px rgba(232,184,90,.055); }
 .board-shell--spectator { border-color: rgba(53,211,148,.23); box-shadow: 0 25px 60px rgba(0,0,0,.32), 0 0 32px rgba(53,211,148,.045); }
 .mode-pill--live { display: flex; align-items: center; gap: 7px; }
@@ -1084,7 +1084,7 @@ a { color: inherit; text-decoration: none; }
 .game-tabs button.is-active::after { content: ""; position: absolute; inset: auto 20% -1px; height: 2px; background: var(--green-bright); }
 .chat-unread { display: none; width: 5px; height: 5px; border-radius: 50%; background: var(--green-bright); }
 .moves-panel { min-height: 0; padding: 12px; border-bottom: 1px solid var(--line); overflow: hidden; }
-.moves-list { height: 100%; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #27513f transparent; }
+.moves-list { height: 100%; overflow-y: auto; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: #27513f transparent; }
 .moves-empty { height: 100%; display: grid; place-content: center; justify-items: center; color: #50685c; text-align: center; }
 .moves-empty span { font: 800 30px var(--font-display); }
 .moves-empty p { margin: 5px 0 0; font-size: 11px; }
