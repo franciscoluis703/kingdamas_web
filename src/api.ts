@@ -177,6 +177,8 @@ export const api = {
     ),
   leaveMatchmaking: () =>
     request<void>("/matchmaking/leave", { method: "DELETE" }),
+  activeGame: () =>
+    request<{ game: Game | null }>("/online-games/active"),
   game: (id: string) => request<{ game: Game }>(`/online-games/${id}`),
   spectatorGames: () =>
     request<{ games: SpectatorGameSummary[]; total: number }>("/spectator-games"),
@@ -191,12 +193,6 @@ export const api = {
     }),
   resign: (id: string) =>
     request<{ game: Game }>(`/online-games/${id}/resign`, { method: "POST" }),
-  resignOnUnload: (id: string) =>
-    fetch(`${API_URL}/online-games/${encodeURIComponent(id)}/resign`, {
-      method: "POST",
-      credentials: "include",
-      keepalive: true,
-    }).catch(() => undefined),
   withdraw: (id: string) =>
     request<{ game: Game; withdrawal: { escalated: boolean } }>(
       `/online-games/${id}/withdraw`,

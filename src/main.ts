@@ -3095,15 +3095,9 @@ function mountGame(initialGame: Game) {
   const handleBeforeUnload = (event: BeforeUnloadEvent) => {
     if (game.status !== "active" || exitRequestInFlight) return;
     event.preventDefault();
-    event.returnValue = "Si sales ahora, perderás la partida.";
-  };
-  const handlePageHide = () => {
-    if (game.status !== "active" || exitRequestInFlight) return;
-    exitRequestInFlight = true;
-    void api.resignOnUnload(game.id);
+    event.returnValue = "La partida continuará activa y volverás a ella al regresar.";
   };
   window.addEventListener("beforeunload", handleBeforeUnload);
-  window.addEventListener("pagehide", handlePageHide);
   const openChat = () => {
     root.querySelector(".game-sidebar")?.classList.toggle("is-open");
     root.querySelector<HTMLInputElement>(".chat-form input")?.focus();
@@ -3176,7 +3170,6 @@ function mountGame(initialGame: Game) {
   pageCleanup = () => {
     if (pageLeaveGuard === leaveGuard) pageLeaveGuard = null;
     window.removeEventListener("beforeunload", handleBeforeUnload);
-    window.removeEventListener("pagehide", handlePageHide);
     board?.destroy();
     window.clearInterval(clockTimer);
     window.clearInterval(syncTimer);
@@ -3422,7 +3415,27 @@ export async function startApp(user: User | null) {
   }
   if (currentUser) {
     setSessionHint(true);
-    await connectRealtime();
+    const currentPath = route();
+    const activeGameRequest = /^\/partida\/\d+$/.test(currentPath)
+      ? Promise.resolve(null)
+      : api.activeGame()
+        .then((response) => response.game)
+        .catch((error) => {
+          console.warn("No se pudo comprobar la partida activa.", error);
+          return null;
+        });
+    const [, activeGame] = await Promise.all([
+      connectRealtime(),
+      activeGameRequest,
+    ]);
+    if (activeGame?.status === "active") {
+      const activePath = `/partida/${activeGame.id}`;
+      history.replaceState(
+        history.state,
+        "",
+        `${location.pathname}${location.search}#${activePath}`,
+      );
+    }
   }
   await renderRoute();
 }
