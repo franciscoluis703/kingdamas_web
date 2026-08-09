@@ -236,6 +236,17 @@ const WORLD_TROPHY_DETAILS = {
   bronze: { image: "/assets/trophies/world-bronze.png", label: "Campeón Mundial · tercer lugar" },
 } as const;
 
+const WORLD_TROPHY_CREDIT = {
+  title: "Award Trophies",
+  creator: "OpenClipart.org",
+  creatorUrl: "https://openclipart.org/",
+  sources: [
+    { placement: "gold", label: "Oro", url: "https://openclipart.org/detail/302918" },
+    { placement: "silver", label: "Plata", url: "https://openclipart.org/detail/302917" },
+    { placement: "bronze", label: "Bronce", url: "https://openclipart.org/detail/302916" },
+  ],
+} as const;
+
 function worldTrophyMarkup(
   player: Pick<User, "worldTitle">,
   extraClass = "",
@@ -892,7 +903,7 @@ function renderCredits() {
   const capture = AUDIO_CREDITS.effects.capture;
   root.innerHTML = appLayout(`
     <section class="page-heading credits-heading">
-      <div><span class="eyebrow"><i></i>PERSONAS DETRÁS DEL SONIDO</span><h1>Créditos</h1><p>Reconocemos a quienes aportaron la música y los efectos que acompañan cada decisión sobre el tablero.</p></div>
+      <div><span class="eyebrow"><i></i>AUTORES Y RECURSOS</span><h1>Créditos</h1><p>Reconocemos a quienes aportaron la música, los efectos y los recursos visuales que acompañan cada partida.</p></div>
       <span class="credits-seal" aria-hidden="true">©</span>
     </section>
     <section class="credits-grid">
@@ -917,8 +928,21 @@ function renderCredits() {
         <a class="credit-author" href="${escapeHtml(capture.sourceUrl)}" target="_blank" rel="noreferrer"><span><small>AUTOR</small><b>${escapeHtml(capture.creator)}</b></span><i aria-hidden="true">↗</i></a>
         <footer>${creditLicense(capture.license, capture.licenseUrl)}</footer>
       </article>
+      <article class="credit-card credit-card--trophies">
+        <header><span>♛</span><small>TROFEOS DEL CAMPEONATO MUNDIAL</small></header>
+        <h2>${escapeHtml(WORLD_TROPHY_CREDIT.title)}</h2>
+        <p>Trofeos oficiales de oro, plata y bronce entregados a los tres campeones mundiales vigentes.</p>
+        <div class="credit-trophy-preview" aria-label="Trofeos del Campeonato Mundial">
+          ${WORLD_TROPHY_CREDIT.sources.map((source) => {
+            const trophy = WORLD_TROPHY_DETAILS[source.placement];
+            return `<span><img src="${trophy.image}" width="32" height="32" alt="Trofeo de ${escapeHtml(source.label.toLowerCase())}" /><small>${escapeHtml(source.label)}</small></span>`;
+          }).join("")}
+        </div>
+        <a class="credit-author" href="${escapeHtml(WORLD_TROPHY_CREDIT.creatorUrl)}" target="_blank" rel="noreferrer"><span><small>FUENTE</small><b>${escapeHtml(WORLD_TROPHY_CREDIT.creator)}</b></span><i aria-hidden="true">↗</i></a>
+        <footer>${WORLD_TROPHY_CREDIT.sources.map((source) => creditLicense(source.label, source.url)).join("")}</footer>
+      </article>
     </section>
-    <section class="credits-thanks"><span>${brandMarkMarkup()}</span><div><small>GRACIAS POR COMPARTIR SU TRABAJO</small><h2>Su creatividad también forma parte de cada partida.</h2><p>Los enlaces de autor y las licencias permanecen disponibles aquí y dentro de la configuración de sonido.</p></div></section>
+    <section class="credits-thanks"><span>${brandMarkMarkup()}</span><div><small>GRACIAS POR COMPARTIR SU TRABAJO</small><h2>Su creatividad también forma parte de cada partida.</h2><p>Los enlaces de autor, las fuentes y las licencias permanecen disponibles en esta página.</p></div></section>
   `, "credits");
   bindNavigation();
 }

@@ -334,11 +334,16 @@ a { color: inherit; text-decoration: none; }
 .credit-card { --credit-accent: var(--green-bright); min-width: 0; min-height: 360px; padding: clamp(21px,3vw,29px); display: flex; flex-direction: column; overflow: hidden; border: 1px solid color-mix(in srgb, var(--credit-accent) 22%, var(--line)); border-radius: 17px; background: radial-gradient(circle at 90% 0, color-mix(in srgb, var(--credit-accent) 10%, transparent), transparent 34%), var(--panel); box-shadow: 0 18px 50px rgba(0,0,0,.13); }
 .credit-card--movement { --credit-accent: var(--gold); }
 .credit-card--capture { --credit-accent: #db8c7d; }
+.credit-card--trophies { --credit-accent: #e8b85a; }
 .credit-card > header { display: flex; align-items: center; gap: 9px; color: var(--credit-accent); }
 .credit-card > header > span { width: 35px; height: 35px; display: grid; place-items: center; border-radius: 10px; background: color-mix(in srgb, var(--credit-accent) 10%, transparent); font: 900 16px var(--font-display); }
 .credit-card > header small { font-size: 9px; font-weight: 800; letter-spacing: .1em; }
 .credit-card h2 { margin: 24px 0 7px; color: var(--cream); font-size: clamp(21px,2.5vw,27px); letter-spacing: -.04em; line-height: 1.08; }
 .credit-card > p { margin: 0 0 22px; color: #7f9388; font-size: 12px; line-height: 1.55; }
+.credit-trophy-preview { margin: -4px 0 18px; padding: 10px 12px; display: flex; align-items: center; justify-content: center; gap: 17px; border: 1px solid rgba(232,184,90,.13); border-radius: 11px; background: rgba(0,0,0,.12); }
+.credit-trophy-preview > span { display: grid; justify-items: center; gap: 3px; }
+.credit-trophy-preview img { width: 32px; height: 32px; display: block; image-rendering: pixelated; filter: drop-shadow(0 5px 7px rgba(0,0,0,.28)); }
+.credit-trophy-preview small { color: #8ea097; font-size: 8px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
 .credit-author { margin-top: auto; padding: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; color: inherit; border: 1px solid var(--line); border-radius: 10px; background: rgba(0,0,0,.13); text-decoration: none; transition: .18s ease; }
 .credit-author:hover { border-color: color-mix(in srgb, var(--credit-accent) 32%, transparent); background: color-mix(in srgb, var(--credit-accent) 5%, transparent); }
 .credit-author > span { min-width: 0; display: grid; gap: 2px; }
