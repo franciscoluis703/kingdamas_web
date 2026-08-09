@@ -1,5 +1,6 @@
 import "./landing.css";
 import { api, ApiError } from "./api";
+import { installInterfaceSounds } from "./game/sound";
 import { renderPublicLanding } from "./landing";
 import type { User } from "./types";
 
@@ -48,4 +49,5 @@ async function bootstrap() {
   }
 }
 
+installInterfaceSounds();
 void bootstrap();

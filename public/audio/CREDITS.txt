@@ -27,3 +27,9 @@ Autor: Paulius Jurgelevičius (pauliuw)
 Fuente: https://opengameart.org/content/gun-reload-lock-or-click-sound
 Licencia: Creative Commons Zero (CC0)
 Licencia completa: https://creativecommons.org/publicdomain/zero/1.0/
+
+Efecto de interfaz
+------------------
+Archivo: menu-click.m4a
+Origen: archivo proporcionado por el propietario del proyecto
+Autor y licencia: no especificados en el archivo de origen
