@@ -149,6 +149,76 @@ function errorMessage(error: unknown) {
   return "Algo salió mal. Inténtalo de nuevo.";
 }
 
+interface ConfirmationDialogOptions {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  note?: string;
+}
+
+function confirmAction({
+  title,
+  message,
+  confirmLabel,
+  cancelLabel = "Seguir jugando",
+  note = "El reloj continúa avanzando mientras la partida esté activa.",
+}: ConfirmationDialogOptions) {
+  return new Promise<boolean>((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "kingdamas-confirm-dialog";
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "kingdamas-confirm-title");
+    dialog.setAttribute("aria-describedby", "kingdamas-confirm-message");
+    dialog.innerHTML = `
+      <header class="kingdamas-confirm-header">
+        <span class="kingdamas-confirm-brand"><img src="/favicon-64.png?v=green-1" width="36" height="36" alt="" /><span><small>KINGDAMAS.COM</small><b>Decisión de partida</b></span></span>
+        <button type="button" data-confirm-close aria-label="Cerrar diálogo">×</button>
+      </header>
+      <div class="kingdamas-confirm-content">
+        <span class="kingdamas-confirm-symbol" aria-hidden="true">!</span>
+        <div><h2 id="kingdamas-confirm-title"></h2><p id="kingdamas-confirm-message"></p></div>
+      </div>
+      <p class="kingdamas-confirm-note"><span aria-hidden="true">◷</span></p>
+      <footer class="kingdamas-confirm-actions">
+        <button class="button button--quiet" type="button" data-confirm-cancel autofocus></button>
+        <button class="button button--danger kingdamas-confirm-danger" type="button" data-confirm-accept></button>
+      </footer>`;
+
+    const titleElement = dialog.querySelector<HTMLElement>("#kingdamas-confirm-title");
+    const messageElement = dialog.querySelector<HTMLElement>("#kingdamas-confirm-message");
+    const noteElement = dialog.querySelector<HTMLElement>(".kingdamas-confirm-note");
+    const cancelButton = dialog.querySelector<HTMLButtonElement>("[data-confirm-cancel]");
+    const acceptButton = dialog.querySelector<HTMLButtonElement>("[data-confirm-accept]");
+    if (titleElement) titleElement.textContent = title;
+    if (messageElement) messageElement.textContent = message;
+    if (noteElement) noteElement.append(document.createTextNode(note));
+    if (cancelButton) cancelButton.textContent = cancelLabel;
+    if (acceptButton) acceptButton.textContent = confirmLabel;
+
+    let settled = false;
+    const settle = (accepted: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      resolve(accepted);
+    };
+    dialog.querySelector("[data-confirm-close]")?.addEventListener("click", () => settle(false));
+    cancelButton?.addEventListener("click", () => settle(false));
+    acceptButton?.addEventListener("click", () => settle(true));
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      settle(false);
+    });
+    dialog.addEventListener("click", (event) => {
+      if (event.target === dialog) settle(false);
+    });
+    document.body.append(dialog);
+    dialog.showModal();
+  });
+}
+
 function bindNavigation() {
   root.querySelectorAll<HTMLElement>("[data-route]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.route || "/inicio"));
@@ -2527,11 +2597,22 @@ async function renderLegendGame(
     onMove: (move) => playMove(move, humanSide),
   });
   bindGameSettings({
-    onResign: () => {
-      if (window.confirm(`¿Confirmas que deseas rendirte ante ${legend.name}?`)) finish(machineSide, "resignation");
+    onResign: async () => {
+      const accepted = await confirmAction({
+        title: `¿Rendirse ante ${legend.name}?`,
+        message: "La leyenda ganará el duelo y esta partida terminará inmediatamente.",
+        confirmLabel: "Rendirme",
+      });
+      if (accepted) finish(machineSide, "resignation");
     },
-    onNewGame: () => {
-      if (status !== "active" || window.confirm("¿Quieres abandonar esta partida y comenzar otra?")) void renderLegendGame(timeControl, legend.key);
+    onNewGame: async () => {
+      if (status === "active" && !(await confirmAction({
+        title: "¿Comenzar otra partida?",
+        message: "El duelo actual terminará como una rendición antes de preparar un tablero nuevo.",
+        confirmLabel: "Terminar y comenzar otra",
+      }))) return;
+      if (status === "active") finish(machineSide, "resignation");
+      void renderLegendGame(timeControl, legend.key);
     },
   });
   startBackgroundSound();
@@ -3074,9 +3155,13 @@ function mountGame(initialGame: Game) {
     catch (error) { toast(errorMessage(error), "error"); }
   };
   let exitRequestInFlight = false;
-  const finishByPlayer = async (message?: string) => {
+  const finishByPlayer = async ({
+    title = "¿Abandonar la partida?",
+    message = "Si sales ahora, perderás la partida y el resultado quedará registrado.",
+    confirmLabel = "Rendirme y salir",
+  }: Partial<Pick<ConfirmationDialogOptions, "title" | "message" | "confirmLabel">> = {}) => {
     if (game.status !== "active") return true;
-    if (!window.confirm(message || "¿Seguro que quieres abandonar esta partida? Si sales ahora, perderás la partida y el resultado quedará registrado.")) return false;
+    if (!(await confirmAction({ title, message, confirmLabel }))) return false;
     exitRequestInFlight = true;
     try {
       const response = await api.resign(game.id);
@@ -3088,9 +3173,9 @@ function mountGame(initialGame: Game) {
       return false;
     }
   };
-  const leaveGuard = () => finishByPlayer(
-    "¿Seguro que quieres abandonar esta partida? Si cambias de página ahora, perderás la partida y el resultado quedará registrado.",
-  );
+  const leaveGuard = () => finishByPlayer({
+    message: "Si cambias de página ahora, perderás la partida y el resultado quedará registrado.",
+  });
   pageLeaveGuard = leaveGuard;
   const handleBeforeUnload = (event: BeforeUnloadEvent) => {
     if (game.status !== "active" || exitRequestInFlight) return;
@@ -3105,9 +3190,19 @@ function mountGame(initialGame: Game) {
   bindGameSettings({
     onChat: openChat,
     onDraw: offerDraw,
-    onResign: async () => { await finishByPlayer(); },
+    onResign: async () => {
+      await finishByPlayer({
+        title: "¿Confirmas la rendición?",
+        message: `La victoria será concedida a ${opponent.name} y el resultado afectará tu Elo Damas.`,
+        confirmLabel: "Confirmar rendición",
+      });
+    },
     onNewGame: async () => {
-      if (!(await finishByPlayer("¿Seguro que quieres abandonar esta partida para comenzar otra? Si continúas, perderás la partida actual."))) return;
+      if (!(await finishByPlayer({
+        title: "¿Comenzar otra partida?",
+        message: "Primero debes rendirte. La partida actual contará como derrota y el resultado quedará registrado.",
+        confirmLabel: "Rendirme y buscar rival",
+      }))) return;
       navigate("/jugar");
     },
   });

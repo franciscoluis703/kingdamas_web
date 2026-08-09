@@ -132,8 +132,29 @@ a { color: inherit; text-decoration: none; }
 .public-footer { min-height: 90px; display: flex; align-items: center; justify-content: space-between; color: #687c72; font-size: 13px; }
 
 .auth-dialog { width: min(530px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 34px; color: #17221d; background: #f7f3e9; border: 0; border-radius: 22px; box-shadow: 0 35px 100px rgba(0,0,0,.62); overflow-y: auto; }
-.auth-dialog::backdrop, .profile-photo-dialog::backdrop, .direct-chat-dialog::backdrop, .tournament-entry-dialog::backdrop, .tournament-participants-dialog::backdrop, .qualifier-bracket-dialog::backdrop { background: rgba(1, 10, 7, .76); backdrop-filter: blur(9px); }
+.auth-dialog::backdrop, .profile-photo-dialog::backdrop, .direct-chat-dialog::backdrop, .tournament-entry-dialog::backdrop, .tournament-participants-dialog::backdrop, .qualifier-bracket-dialog::backdrop, .kingdamas-confirm-dialog::backdrop { background: rgba(1, 10, 7, .76); backdrop-filter: blur(9px); }
 .dialog-close { position: absolute; top: 16px; right: 18px; border: 0; background: transparent; color: #6a756f; font-size: 30px; cursor: pointer; }
+.kingdamas-confirm-dialog { width: min(480px, calc(100% - 28px)); padding: 0; color: #eaf2ed; border: 1px solid rgba(255,255,255,.14); border-radius: 21px; background: radial-gradient(circle at 90% -15%, rgba(53,211,148,.11), transparent 37%), #0b2119; box-shadow: 0 35px 110px rgba(0,0,0,.7); overflow: hidden; }
+.kingdamas-confirm-dialog[open] { animation: kingdamas-dialog-in .18s ease-out; }
+.kingdamas-confirm-header { min-height: 69px; padding: 12px 14px 12px 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.018); }
+.kingdamas-confirm-brand { display: flex; align-items: center; gap: 10px; }
+.kingdamas-confirm-brand img { width: 36px; height: 36px; object-fit: contain; filter: drop-shadow(0 5px 8px rgba(0,0,0,.3)); }
+.kingdamas-confirm-brand > span { display: grid; gap: 2px; }
+.kingdamas-confirm-brand small { color: var(--green-bright); font-size: 8px; font-weight: 900; letter-spacing: .14em; }
+.kingdamas-confirm-brand b { color: #eff7f2; font-size: 12px; }
+.kingdamas-confirm-header > button { width: 35px; height: 35px; display: grid; place-items: center; color: #81958a; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.035); cursor: pointer; font-size: 23px; line-height: 1; }
+.kingdamas-confirm-header > button:hover { color: #f0f7f3; background: rgba(255,255,255,.075); }
+.kingdamas-confirm-content { padding: 27px 27px 18px; display: grid; grid-template-columns: 48px 1fr; align-items: start; gap: 16px; }
+.kingdamas-confirm-symbol { width: 48px; height: 48px; display: grid; place-items: center; color: #ffc2b9; border: 1px solid rgba(229,95,77,.28); border-radius: 14px; background: rgba(205,69,54,.11); font: 900 22px var(--font-display); }
+.kingdamas-confirm-content h2 { margin: 1px 0 8px; color: var(--cream); font-size: 24px; line-height: 1.12; letter-spacing: -.035em; }
+.kingdamas-confirm-content p { margin: 0; color: #96aa9f; font-size: 14px; line-height: 1.58; }
+.kingdamas-confirm-note { margin: 0 27px 22px 91px; padding: 10px 12px; display: flex; align-items: flex-start; gap: 8px; color: #c9b77f; border: 1px solid rgba(232,184,90,.16); border-radius: 10px; background: rgba(232,184,90,.055); font-size: 11px; line-height: 1.45; }
+.kingdamas-confirm-note > span { flex: 0 0 auto; color: var(--gold); font-size: 15px; line-height: 1; }
+.kingdamas-confirm-actions { padding: 15px 18px 18px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px; border-top: 1px solid var(--line); background: rgba(0,0,0,.08); }
+.kingdamas-confirm-actions .button { min-height: 46px; padding-inline: 13px; }
+.kingdamas-confirm-danger { color: #fff0ed; background: linear-gradient(135deg, #b9493c, #95362d); border-color: rgba(255,174,161,.2); box-shadow: 0 10px 24px rgba(122,37,29,.2); }
+.kingdamas-confirm-danger:hover:not(:disabled) { background: linear-gradient(135deg, #cb584a, #a94035); }
+@keyframes kingdamas-dialog-in { from { opacity: 0; transform: translateY(10px) scale(.975); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .auth-brand { color: #112119; margin-bottom: 26px; }
 .auth-brand .brand-name b { color: #118a5c; }
 .auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; border-radius: 11px; background: #e9e4d8; }
@@ -1600,6 +1621,11 @@ a { color: inherit; text-decoration: none; }
   .draw-offer { flex-wrap: wrap; }
   .draw-offer > div { width: 100%; }
   .friend-invite-modal { padding: 30px 20px 23px; }
+  .kingdamas-confirm-content { padding: 23px 19px 15px; grid-template-columns: 42px 1fr; gap: 12px; }
+  .kingdamas-confirm-symbol { width: 42px; height: 42px; border-radius: 12px; font-size: 19px; }
+  .kingdamas-confirm-content h2 { font-size: 21px; }
+  .kingdamas-confirm-note { margin: 0 19px 18px; }
+  .kingdamas-confirm-actions { grid-template-columns: 1fr; }
   .invite-actions { grid-template-columns: 1fr; }
   .challenge-details { grid-template-columns: 1fr; }
   .challenge-details > span { grid-template-columns: 1fr 1fr; border-left: 0; border-top: 1px solid var(--line); text-align: left; }
