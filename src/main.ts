@@ -76,6 +76,8 @@ if (!root) throw new Error("No se encontró el contenedor principal.");
 let currentUser: User | null = null;
 let socket: Socket | null = null;
 let pageCleanup: (() => void) | null = null;
+let pageLeaveGuard: (() => Promise<boolean>) | null = null;
+let pendingLeaveDecision: Promise<boolean> | null = null;
 let toastTimer: number | null = null;
 let matchmakingTimer: number | null = null;
 let matchmakingStartedAt = 0;
@@ -97,13 +99,37 @@ const LEGAL_ROUTES = [
 type LegalPath = (typeof LEGAL_ROUTES)[number]["path"];
 
 const route = () => location.hash.replace(/^#/, "") || "/inicio";
+let renderedPath = route();
+let bypassNextHashGuard = false;
+
+async function requestPageLeave() {
+  const guard = pageLeaveGuard;
+  if (!guard) return true;
+  if (pendingLeaveDecision) return pendingLeaveDecision;
+  const decision = guard()
+    .then((allowed) => {
+      if (allowed && pageLeaveGuard === guard) pageLeaveGuard = null;
+      return allowed;
+    })
+    .finally(() => {
+      pendingLeaveDecision = null;
+    });
+  pendingLeaveDecision = decision;
+  return decision;
+}
+
+async function navigateSafely(path: string) {
+  if (route() === path) {
+    if (!pageLeaveGuard) await renderRoute();
+    return;
+  }
+  if (!(await requestPageLeave())) return;
+  bypassNextHashGuard = true;
+  location.hash = path;
+}
 
 function navigate(path: string) {
-  if (route() === path) {
-    void renderRoute();
-  } else {
-    location.hash = path;
-  }
+  void navigateSafely(path);
 }
 
 function toast(message: string, kind: "success" | "error" = "success") {
@@ -128,6 +154,7 @@ function bindNavigation() {
     element.addEventListener("click", () => navigate(element.dataset.route || "/inicio"));
   });
   root.querySelector<HTMLButtonElement>("[data-logout]")?.addEventListener("click", async () => {
+    if (!(await requestPageLeave())) return;
     try {
       await api.logout();
     } finally {
@@ -2894,19 +2921,37 @@ function mountGame(initialGame: Game) {
     try { update((await api.offerDraw(game.id)).game); }
     catch (error) { toast(errorMessage(error), "error"); }
   };
+  let exitRequestInFlight = false;
   const finishByPlayer = async (message?: string) => {
     if (game.status !== "active") return true;
-    const withdrawal = game.moveCount === 0;
-    if (!window.confirm(message || (withdrawal ? "¿Quieres retirarte de esta partida?" : "¿Confirmas que deseas rendirte?"))) return false;
+    if (!window.confirm(message || "¿Seguro que quieres abandonar esta partida? Si sales ahora, perderás la partida y el resultado quedará registrado.")) return false;
+    exitRequestInFlight = true;
     try {
-      const response = withdrawal ? await api.withdraw(game.id) : await api.resign(game.id);
+      const response = await api.resign(game.id);
       update(response.game);
       return true;
     } catch (error) {
+      exitRequestInFlight = false;
       toast(errorMessage(error), "error");
       return false;
     }
   };
+  const leaveGuard = () => finishByPlayer(
+    "¿Seguro que quieres abandonar esta partida? Si cambias de página ahora, perderás la partida y el resultado quedará registrado.",
+  );
+  pageLeaveGuard = leaveGuard;
+  const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+    if (game.status !== "active" || exitRequestInFlight) return;
+    event.preventDefault();
+    event.returnValue = "Si sales ahora, perderás la partida.";
+  };
+  const handlePageHide = () => {
+    if (game.status !== "active" || exitRequestInFlight) return;
+    exitRequestInFlight = true;
+    void api.resignOnUnload(game.id);
+  };
+  window.addEventListener("beforeunload", handleBeforeUnload);
+  window.addEventListener("pagehide", handlePageHide);
   const openChat = () => {
     root.querySelector(".game-sidebar")?.classList.toggle("is-open");
     root.querySelector<HTMLInputElement>(".chat-form input")?.focus();
@@ -2916,7 +2961,7 @@ function mountGame(initialGame: Game) {
     onDraw: offerDraw,
     onResign: async () => { await finishByPlayer(); },
     onNewGame: async () => {
-      if (!(await finishByPlayer("Para comenzar otra partida debes salir de esta. ¿Deseas continuar?"))) return;
+      if (!(await finishByPlayer("¿Seguro que quieres abandonar esta partida para comenzar otra? Si continúas, perderás la partida actual."))) return;
       navigate("/jugar");
     },
   });
@@ -2977,6 +3022,9 @@ function mountGame(initialGame: Game) {
 
   pageCleanup?.();
   pageCleanup = () => {
+    if (pageLeaveGuard === leaveGuard) pageLeaveGuard = null;
+    window.removeEventListener("beforeunload", handleBeforeUnload);
+    window.removeEventListener("pagehide", handlePageHide);
     board?.destroy();
     window.clearInterval(clockTimer);
     window.clearInterval(syncTimer);
@@ -3138,10 +3186,11 @@ function setSessionHint(active: boolean) {
 }
 
 async function renderRoute() {
+  const path = route();
+  renderedPath = path;
   pageCleanup?.();
   pageCleanup = null;
   stopLinkInvitationPolling();
-  const path = route();
   const sharedInvitation = new URLSearchParams(window.location.search).get("invitacion");
   if (sharedInvitation) return renderSharedInvitation(sharedInvitation);
   if (!currentUser) {
@@ -3177,10 +3226,27 @@ async function renderRoute() {
 
 let routeListenerBound = false;
 
+async function handleHashChange() {
+  if (bypassNextHashGuard) {
+    bypassNextHashGuard = false;
+    await renderRoute();
+    return;
+  }
+  if (route() !== renderedPath && !(await requestPageLeave())) {
+    history.replaceState(
+      history.state,
+      "",
+      `${location.pathname}${location.search}#${renderedPath}`,
+    );
+    return;
+  }
+  await renderRoute();
+}
+
 export async function startApp(user: User | null) {
   currentUser = user;
   if (!routeListenerBound) {
-    window.addEventListener("hashchange", () => void renderRoute());
+    window.addEventListener("hashchange", () => void handleHashChange());
     routeListenerBound = true;
   }
   if (currentUser) {

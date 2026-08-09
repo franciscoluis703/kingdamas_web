@@ -191,6 +191,12 @@ export const api = {
     }),
   resign: (id: string) =>
     request<{ game: Game }>(`/online-games/${id}/resign`, { method: "POST" }),
+  resignOnUnload: (id: string) =>
+    fetch(`${API_URL}/online-games/${encodeURIComponent(id)}/resign`, {
+      method: "POST",
+      credentials: "include",
+      keepalive: true,
+    }).catch(() => undefined),
   withdraw: (id: string) =>
     request<{ game: Game; withdrawal: { escalated: boolean } }>(
       `/online-games/${id}/withdraw`,
