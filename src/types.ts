@@ -342,6 +342,7 @@ export interface LinkInvitation {
     username: string;
     rating: number;
     avatarUrl?: string | null;
+    worldTitle?: WorldTitle | null;
   };
 }
 
@@ -359,5 +360,6 @@ export interface DirectInvitation {
     username: string;
     rating: number;
     avatarUrl?: string | null;
+    worldTitle?: WorldTitle | null;
   };
 }

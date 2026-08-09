@@ -231,9 +231,9 @@ function logoMarkup() {
 }
 
 const WORLD_TROPHY_DETAILS = {
-  gold: { image: "/assets/trophies/world-gold.png", label: "Campeón Mundial · primer lugar" },
-  silver: { image: "/assets/trophies/world-silver.png", label: "Campeón Mundial · segundo lugar" },
-  bronze: { image: "/assets/trophies/world-bronze.png", label: "Campeón Mundial · tercer lugar" },
+  gold: { image: "/assets/trophies/world-gold.png", label: "Campeón Mundial · primer lugar", podiumLabel: "Primer lugar" },
+  silver: { image: "/assets/trophies/world-silver.png", label: "Campeón Mundial · segundo lugar", podiumLabel: "Segundo lugar" },
+  bronze: { image: "/assets/trophies/world-bronze.png", label: "Campeón Mundial · tercer lugar", podiumLabel: "Tercer lugar" },
 } as const;
 
 const WORLD_TROPHY_CREDIT = {
@@ -254,7 +254,18 @@ function worldTrophyMarkup(
   const title = player.worldTitle;
   if (!title) return "";
   const trophy = WORLD_TROPHY_DETAILS[title.placement];
-  return `<span class="world-trophy ${extraClass}" title="${escapeHtml(trophy.label)}" aria-label="${escapeHtml(trophy.label)}"><img src="${trophy.image}" width="32" height="32" alt="" /></span>`;
+  const recognition = `Podio Mundial vigente · ${trophy.label}`;
+  return `<span class="world-trophy ${extraClass}" title="${escapeHtml(recognition)}" aria-label="${escapeHtml(recognition)}"><img src="${trophy.image}" width="32" height="32" alt="" /></span>`;
+}
+
+function worldTitleRecognitionMarkup(
+  player: Pick<User, "worldTitle">,
+  extraClass = "",
+) {
+  const title = player.worldTitle;
+  if (!title) return "";
+  const trophy = WORLD_TROPHY_DETAILS[title.placement];
+  return `<span class="world-title-recognition is-${title.placement} ${extraClass}"><strong>PODIO MUNDIAL VIGENTE</strong><small>${escapeHtml(trophy.podiumLabel)}</small></span>`;
 }
 
 function playerProfileButton(
@@ -648,7 +659,7 @@ function dashboardMarkup(rating: Rating | undefined, leaders: LeaderboardPlayer[
   const winRate = games ? Math.round((wins / games) * 100) : 0;
   return `
     <section class="dashboard-heading">
-      <div><span class="eyebrow"><i></i>RESUMEN PERSONAL</span><h1>Hola, ${escapeHtml(currentUser?.name.split(" ")[0])}</h1><p>Este es tu recorrido actual en Elo Damas.</p></div>
+      <div><span class="eyebrow"><i></i>RESUMEN PERSONAL</span><h1 class="dashboard-greeting"><span>Hola, ${escapeHtml(currentUser?.name.split(" ")[0])}</span>${currentUser ? worldTrophyMarkup(currentUser, "world-trophy--heading") : ""}</h1>${currentUser ? worldTitleRecognitionMarkup(currentUser, "world-title-recognition--heading") : ""}<p>Este es tu recorrido actual en Elo Damas.</p></div>
       <div class="rating-card"><span>${icon("ranking")}</span><div><small>Tu Elo Damas</small><b>${value.toLocaleString("es-DO")}</b><em>${escapeHtml(rating?.tier ?? eloTier(value))}</em></div></div>
     </section>
     <div class="dashboard-grid">
@@ -1058,7 +1069,7 @@ function communityPlayerMarkup(
   placement: "friends" | "discover",
 ) {
   return `<article class="community-player">
-    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--community")}<span class="community-player-copy"><b>${escapeHtml(player.name)}</b><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small></span>`, "community-player-profile")}
+    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--community")}<span class="community-player-copy"><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--compact")}</span>`, "community-player-profile")}
     ${player.rating !== undefined ? `<strong>${player.rating.toLocaleString("es-DO")}<small>Elo</small></strong>` : ""}
     <div class="community-player-actions">
       <button type="button" data-open-conversation="${escapeHtml(player.username)}" aria-label="Enviar mensaje a ${escapeHtml(player.name)}" title="Mensaje">${icon("chat")}</button>
@@ -1075,7 +1086,7 @@ function communityConversationMarkup(conversation: DirectConversation) {
     month: "short",
   });
   return `<article class="conversation-row">
-    ${playerProfileButton(conversation.user, `${avatarMarkup(conversation.user, "avatar avatar--community")}<span><b>${escapeHtml(conversation.user.name)}</b><small>@${escapeHtml(conversation.user.username)}</small></span>`, "conversation-player-profile")}
+    ${playerProfileButton(conversation.user, `${avatarMarkup(conversation.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b>${escapeHtml(conversation.user.name)}</b>${worldTrophyMarkup(conversation.user)}</span><small>@${escapeHtml(conversation.user.username)}</small>${worldTitleRecognitionMarkup(conversation.user, "world-title-recognition--compact")}</span>`, "conversation-player-profile")}
     <time>${escapeHtml(when)}</time>
     <button class="conversation-preview" type="button" data-open-conversation="${escapeHtml(conversation.user.username)}" aria-label="Abrir conversación con ${escapeHtml(conversation.user.name)}"><span>${icon("chat")}</span>${conversation.lastMessageOwn ? "Tú: " : ""}${escapeHtml(conversation.lastMessage)}</button>
     ${conversation.unreadCount ? `<i>${conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</i>` : ""}
@@ -1236,7 +1247,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     try {
       const response = await api.directMessages(activeUsername);
       if (!dialog.open || response.user.username !== activeUsername) return;
-      if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><b id="direct-chat-name">${escapeHtml(response.user.name)}</b><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small></span>`, "direct-chat-player-profile");
+      if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b id="direct-chat-name">${escapeHtml(response.user.name)}</b>${worldTrophyMarkup(response.user)}</span><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small>${worldTitleRecognitionMarkup(response.user, "world-title-recognition--compact")}</span>`, "direct-chat-player-profile");
       renderDirectMessages(response.messages);
       root.querySelector(`[data-open-conversation="${CSS.escape(activeUsername)}"] i`)?.remove();
     } catch (error) {
@@ -1357,7 +1368,7 @@ function tournamentParticipantCards(participants: TournamentParticipant[]) {
   }
   return participants.map((participant) => `<button class="tournament-participant-card" type="button" data-player-profile-link="${escapeHtml(participant.username)}" aria-label="Ver perfil de ${escapeHtml(participant.name)}">
     ${avatarMarkup(participant, "avatar avatar--tournament")}
-    <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small><em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
+    <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small>${worldTitleRecognitionMarkup(participant, "world-title-recognition--compact")}<em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
     <strong>${participant.rating.toLocaleString("es-DO")}<small>Elo Damas</small></strong>
     <i aria-hidden="true">→</i>
   </button>`).join("");
@@ -1376,7 +1387,7 @@ function tournamentPlayerProfileMarkup(
     <button class="tournament-profile-back" type="button" data-back-participants>← ${escapeHtml(backLabel)}</button>
     <div class="tournament-profile-hero">
       ${avatarMarkup(profile, "avatar avatar--tournament-profile")}
-      <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].label)}</strong>` : ""}</span>
+      <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">PODIO MUNDIAL VIGENTE · ${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].podiumLabel)}</strong>` : ""}</span>
       ${!profile.isSelf ? `<button class="button ${profile.isFollowing ? "button--quiet" : "button--primary"} button--small" type="button" data-follow-tournament-player="${escapeHtml(profile.username)}" ${profile.isFollowing ? "disabled" : ""}>${profile.isFollowing ? "✓ En tus amigos" : `${icon("userPlus")} Agregar amigo`}</button>` : `<span class="tournament-own-profile">Tu perfil</span>`}
     </div>
     <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString("es-DO") ?? mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
@@ -1403,7 +1414,7 @@ function playerProfilePageMarkup(
     : null;
   return `
     <section class="page-heading player-profile-heading">
-      <div><button class="text-button" type="button" data-route="/comunidad">← Comunidad</button><span class="eyebrow"><i></i>PERFIL DE JUGADOR</span><h1>${escapeHtml(profile.name)}</h1><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)} · Damas internacionales 10×10</p></div>
+      <div><button class="text-button" type="button" data-route="/comunidad">← Comunidad</button><span class="eyebrow"><i></i>PERFIL DE JUGADOR</span><h1 class="profile-heading-name"><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--heading")}</h1><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)} · Damas internacionales 10×10</p></div>
       ${profile.isSelf
         ? `<button class="button button--quiet" type="button" data-open-profile-photo>${icon("camera")} Cambiar foto</button>`
         : profile.isFollowing
@@ -1470,7 +1481,7 @@ function qualifierBracketPlayerMarkup(
   const winner = match.winnerId === player.id;
   return playerProfileButton(player, `
     ${avatarMarkup(player, "avatar avatar--bracket")}
-    <span><b>${escapeHtml(player.name)}</b><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString("es-DO")}</small></span>
+    <span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString("es-DO")}</small></span>
     ${winner ? "<i>✓</i>" : ""}
   `, `qualifier-bracket-player ${winner ? "is-winner" : ""}`);
 }
@@ -1485,7 +1496,7 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
       : viewer.participant.state === "eliminated"
         ? `<div class="qualifier-viewer-match is-eliminated"><span>×</span><p><small>RESULTADO FINAL</small><b>Participación finalizada</b><em>El cuadro registra ${viewer.participant.losses} derrotas.</em></p></div>`
         : viewer.opponent
-          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><b>${escapeHtml(viewer.opponent.name)}</b><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString("es-DO")} Elo Damas</em></p>`, "qualifier-viewer-opponent")}</div>`
+          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><span class="player-name-with-title"><b>${escapeHtml(viewer.opponent.name)}</b>${worldTrophyMarkup(viewer.opponent)}</span><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString("es-DO")} Elo Damas</em>${worldTitleRecognitionMarkup(viewer.opponent, "world-title-recognition--compact")}</p>`, "qualifier-viewer-opponent")}</div>`
           : `<div class="qualifier-viewer-match is-waiting"><span>…</span><p><small>TU PRIMER CRUCE · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "26 JUN 2027"}</small><b>Rival por confirmar</b><em>Quedarás emparejado con el próximo jugador disponible de tu país.</em></p></div>`;
   const qualifierSlots = Array.from({ length: bracket.rules.qualifyingPlaces }, (_, index) => bracket.qualifiers[index] || null);
   const stateLabels = {
@@ -1501,13 +1512,13 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
     <div class="qualifier-bracket-facts"><span><b>${bracket.rules.qualifyingPlaces}</b><small>Cupos al Mundial</small></span><span><b>${bracket.rules.lossesToEliminate}</b><small>Derrotas eliminan</small></span><span><b>${bracket.rules.timeControlMinutes}</b><small>Minutos por jugador</small></span><span><b>${bracket.participants.length}</b><small>Inscritos del país</small></span></div>
     ${viewerCallout}
     <section class="qualifier-final-slots"><header><span><small>META DEL CUADRO</small><h3>Los tres clasificados</h3></span><p>Solo estos tres puestos avanzan al Campeonato Mundial.</p></header><div>${qualifierSlots.map((player, index) => player
-      ? `<span class="is-filled"><i>${index + 1}</i>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--qualifier-slot")}<p><b>${escapeHtml(player.name)}</b><small>@${escapeHtml(player.username)}</small></p>`, "qualifier-slot-profile")}<em>CLASIFICADO</em></span>`
+      ? `<span class="is-filled"><i>${index + 1}</i>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--qualifier-slot")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)}</small></p>`, "qualifier-slot-profile")}<em>CLASIFICADO</em></span>`
       : `<span><i>${index + 1}</i><div class="qualifier-slot-pending">?</div><p><b>Cupo por definir</b><small>Avanza un sobreviviente</small></p></span>`).join("")}</div></section>
     <section class="qualifier-calendar"><header><span><small>CALENDARIO OFICIAL</small><h3>Fechas de ronda</h3></span><p>El cuadro se actualiza automáticamente después de completar cada ronda.</p></header><div>${bracket.calendar.map((entry) => `<span class="${bracket.rounds.some((round) => round.round === entry.round) ? "has-matches" : ""}"><small>R${entry.round}</small><b>${qualifierMatchDate(entry.scheduledAt).replace(/ de /g, " ")}</b></span>`).join("")}</div></section>
     <section class="qualifier-rounds"><header><span><small>ENFRENTAMIENTOS</small><h3>${bracket.tournament.status === "open" ? "Primera ronda provisional" : "Cuadro en vivo"}</h3></span><p>${bracket.tournament.status === "open" ? "Los pares se asignan por orden de inscripción; el último jugador sin pareja espera la siguiente inscripción." : "Los ganadores continúan y dos derrotas eliminan."}</p></header>
       <div class="qualifier-round-columns">${bracket.rounds.length ? bracket.rounds.map((round) => `<article class="qualifier-round-column"><header><span><small>RONDA ${round.round}</small><b>${qualifierMatchDate(round.scheduledAt)}</b></span><em class="is-${round.status}">${round.status === "in_progress" ? "En juego" : round.status === "completed" ? "Completada" : "Programada"}</em></header><div>${round.matches.map((match) => `<article class="qualifier-match ${match.status === "pending_opponent" ? "is-pending" : ""}">${qualifierBracketPlayerMarkup(match.ivory, match)}<i>VS</i>${qualifierBracketPlayerMarkup(match.mahogany, match)}<footer>${match.provisional ? "Cruce reservado por inscripción" : match.status === "active" ? "Partida disponible" : match.status === "completed" ? "Resultado confirmado" : "Partida cerrada"}</footer></article>`).join("")}</div></article>`).join("") : `<div class="qualifier-bracket-empty"><span>${icon("users")}</span><b>Esperando jugadores de ${flag(countryCode)} ${escapeHtml(countryCode)}</b><p>El primer cruce aparecerá cuando se confirme una inscripción.</p></div>`}</div>
     </section>
-    <section class="qualifier-participant-status"><header><span><small>ESTADO DEL PAÍS</small><h3>Jugadores en ruta</h3></span></header><div>${bracket.participants.length ? bracket.participants.map((player) => `<span>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--bracket-status")}<p><b>${escapeHtml(player.name)}</b><small>@${escapeHtml(player.username)} · ${escapeHtml(player.tier)}</small></p>`, "qualifier-status-profile")}<strong>${player.losses}<small>derrotas</small></strong><em class="is-${player.state}">${stateLabels[player.state]}</em></span>`).join("") : `<p class="qualifier-status-empty">Todavía no hay jugadores inscritos en este país.</p>`}</div></section>
+    <section class="qualifier-participant-status"><header><span><small>ESTADO DEL PAÍS</small><h3>Jugadores en ruta</h3></span></header><div>${bracket.participants.length ? bracket.participants.map((player) => `<span>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--bracket-status")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${escapeHtml(player.tier)}</small></p>`, "qualifier-status-profile")}<strong>${player.losses}<small>derrotas</small></strong><em class="is-${player.state}">${stateLabels[player.state]}</em></span>`).join("") : `<p class="qualifier-status-empty">Todavía no hay jugadores inscritos en este país.</p>`}</div></section>
     <p class="qualifier-bracket-note">Los cruces son nacionales y dinámicos. Si una ronda tiene un número impar de jugadores, uno descansa; el sistema rota ese descanso y evita repetir rivales cuando existe otra pareja disponible.</p>`;
 }
 
@@ -2067,7 +2078,7 @@ function leaderboardTable(players: LeaderboardPlayer[], compact: boolean) {
     <div class="ranking-head" role="row"><span>Pos.</span><span>Jugador</span><span>Partidas</span><span>V-D-T</span><span>Elo Damas</span></div>
     ${players.map((player) => `<div class="ranking-row ${currentUser?.id === player.id ? "is-me" : ""}" role="row">
       <span class="rank-position ${player.position <= 3 ? "is-top" : ""}">${player.position <= 3 ? ["🥇", "🥈", "🥉"][player.position - 1] : `#${player.position}`}</span>
-      ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--table")}<span><b>${escapeHtml(player.name)}</b><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small></span>`, "rank-player")}
+      ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--table")}<span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player, "world-trophy--ranking")}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--ranking")}</span>`, "rank-player")}
       <span>${player.gamesPlayed}</span><span>${player.wins}-${player.losses}-${player.draws}</span><strong>${player.rating.toLocaleString("es-DO")}<small>${escapeHtml(player.tier ?? eloTier(player.rating))}</small></strong>
     </div>`).join("")}
   </div>`;
@@ -2107,7 +2118,7 @@ async function renderSharedInvitation(token: string) {
           <p>${ownInvitation ? "Comparte el enlace original y espera a que tu amigo lo acepte." : "¿Puedes arrebatarle la corona? Acepta el desafío y demuestra tu nivel en el tablero."}</p>
           ${playerProfileButton(invitation.sender, `
             ${avatarMarkup(invitation.sender, "avatar avatar--challenger")}
-            <span><small>QUIEN TE DESAFÍA</small><b>${escapeHtml(invitation.sender.name)}</b><em>@${escapeHtml(invitation.sender.username)}</em></span>
+            <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(invitation.sender.name)}</b>${worldTrophyMarkup(invitation.sender)}</span><em>@${escapeHtml(invitation.sender.username)}</em>${worldTitleRecognitionMarkup(invitation.sender, "world-title-recognition--compact")}</span>
             <strong>${invitation.sender.rating}<small>Elo Damas</small></strong>
           `, "challenger-card")}
           <div class="challenge-details"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj por jugador</small><b>${invitation.timeControlMinutes} minutos</b></span><span><small>Disponibilidad</small><b>${available ? "Una persona" : "No disponible"}</b></span></div>
@@ -2687,7 +2698,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
       return;
     }
     const winner = game.winner ? game.players[game.winner] : null;
-    container.innerHTML = `<div class="board-result-card"><span class="result-icon">${winner ? "♛" : "½"}</span><span class="section-kicker">TRANSMISIÓN FINALIZADA</span><h2>${winner ? `Victoria de ${escapeHtml(winner.name)}` : "Tablas"}</h2><p>${endReasonLabel(game.endReason)}</p><div class="result-summary"><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Espectadores</small><b>${spectatorCount}</b></span></div><div class="result-actions"><button class="button button--primary" type="button" data-result-live>${icon("eye")} Ver otras partidas</button><button class="button button--quiet" type="button" data-result-home>Volver al inicio</button></div></div>`;
+    container.innerHTML = `<div class="board-result-card"><span class="result-icon">${winner ? "♛" : "½"}</span><span class="section-kicker">TRANSMISIÓN FINALIZADA</span><h2 class="result-winner-name">${winner ? `<span>Victoria de ${escapeHtml(winner.name)}</span>${worldTrophyMarkup(winner, "world-trophy--result")}` : "Tablas"}</h2>${winner ? worldTitleRecognitionMarkup(winner, "world-title-recognition--result") : ""}<p>${endReasonLabel(game.endReason)}</p><div class="result-summary"><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Espectadores</small><b>${spectatorCount}</b></span></div><div class="result-actions"><button class="button button--primary" type="button" data-result-live>${icon("eye")} Ver otras partidas</button><button class="button button--quiet" type="button" data-result-home>Volver al inicio</button></div></div>`;
     container.classList.add("is-visible");
     container.setAttribute("aria-hidden", "false");
     container.querySelector("[data-result-live]")?.addEventListener("click", () => navigate("/en-vivo"));
