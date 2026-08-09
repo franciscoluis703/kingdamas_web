@@ -955,11 +955,13 @@ a { color: inherit; text-decoration: none; }
 .quick-action:hover:not(:disabled), .quick-action[aria-expanded="true"] { color: var(--green-bright); border-color: rgba(53,211,148,.28); background: rgba(53,211,148,.08); }
 .quick-action:disabled { opacity: .3; cursor: not-allowed; }
 .quick-action .icon { width: 16px; height: 16px; }
-.game-settings-menu { position: absolute; z-index: 70; right: 0; bottom: calc(100% + 9px); width: 280px; padding: 8px; display: none; border: 1px solid rgba(255,255,255,.14); border-radius: 13px; background: #102b21; box-shadow: 0 20px 55px rgba(0,0,0,.48); }
+.game-settings-menu { position: absolute; z-index: 70; inset: 0; width: 100%; max-height: 100%; padding: 8px; display: none; align-content: start; overflow-y: auto; border: 1px solid rgba(255,255,255,.14); border-radius: inherit; background: rgba(16,43,33,.985); box-shadow: 0 20px 55px rgba(0,0,0,.48); }
 .game-settings-menu.is-open { display: grid; }
 .settings-menu-title { padding: 8px 9px 11px; display: flex; align-items: center; gap: 8px; color: #dce8e1; border-bottom: 1px solid var(--line); font-size: 12px; }
 .settings-menu-title > span { color: var(--green-bright); }
 .settings-menu-title .icon { width: 15px; }
+.settings-menu-title > button { width: 29px; height: 29px; margin: -5px -4px -5px auto; padding: 0; display: grid; place-items: center; color: #8fa39a; border: 1px solid transparent; border-radius: 8px; background: transparent; cursor: pointer; font: 400 22px/1 var(--font-body); }
+.settings-menu-title > button:hover { color: #f2f7f4; border-color: var(--line); background: rgba(255,255,255,.055); }
 .game-settings-menu > button:not(.mini-switch) { width: 100%; min-height: 39px; padding: 7px 9px; display: flex; align-items: center; gap: 10px; border: 0; border-radius: 8px; color: #aebfb6; background: transparent; cursor: pointer; text-align: left; }
 .game-settings-menu > button:not(.mini-switch):hover:not(:disabled) { color: #eff7f2; background: rgba(255,255,255,.055); }
 .game-settings-menu > button:not(.mini-switch):disabled { opacity: .35; cursor: not-allowed; }
@@ -1075,7 +1077,7 @@ a { color: inherit; text-decoration: none; }
 .game-result small { color: var(--green-bright); font-size: 9px; letter-spacing: .14em; }
 .game-result h2 { margin: 2px 0; }
 .game-result p { margin: 0; color: #71867b; font-size: 11px; }
-.game-sidebar { height: min(690px, calc(100vh - 150px)); min-height: 480px; display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(190px, .72fr); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgba(13,34,26,.82); }
+.game-sidebar { position: relative; height: min(690px, calc(100vh - 150px)); min-height: 480px; display: grid; grid-template-rows: auto minmax(0, 1fr) minmax(190px, .72fr); overflow: hidden; border: 1px solid var(--line); border-radius: 14px; background: rgba(13,34,26,.82); }
 .game-tabs { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); }
 .game-tabs button { position: relative; padding: 15px; border: 0; color: #6e8378; background: transparent; cursor: pointer; font-size: 11px; font-weight: 700; }
 .game-tabs button.is-active { color: #e5eee9; }
@@ -1244,6 +1246,7 @@ a { color: inherit; text-decoration: none; }
   .game-layout { grid-template-columns: 1fr; }
   .game-sidebar { display: none; position: fixed; z-index: 80; inset: 90px 14px 78px; height: auto; min-height: 0; background: #0d251c; box-shadow: 0 25px 70px rgba(0,0,0,.55); }
   .game-sidebar.is-open { display: grid; }
+  .game-sidebar.is-settings-visible, .legend-sidebar.is-settings-visible { position: fixed; z-index: 90; inset: 90px 14px 78px auto; width: min(310px, calc(100vw - 28px)); height: auto; min-height: 0; display: grid; background: #0d251c; box-shadow: 0 25px 70px rgba(0,0,0,.55); }
   .mobile-chat-button { display: inline-flex; }
   .legend-sidebar { position: static; height: 340px; display: grid; margin-top: 5px; box-shadow: none; }
   .spectator-sidebar { position: static; height: 380px; display: grid; margin-top: 5px; box-shadow: none; }
@@ -1445,7 +1448,7 @@ a { color: inherit; text-decoration: none; }
   .player-quick-actions { gap: 3px; }
   .quick-action { width: 29px; height: 29px; }
   .quick-action .icon { width: 14px; }
-  .game-settings-menu { position: fixed; right: 12px; bottom: 76px; width: min(285px, calc(100vw - 24px)); }
+  .game-settings-menu { position: absolute; inset: 0; width: 100%; }
   .turn-indicator { display: none !important; }
   .board-shell { padding: 6px; border-radius: 8px; }
   .board-result-overlay { inset: 6px; padding: 8px; }

@@ -3002,7 +3002,7 @@ function gameQuickActions(chatAvailable = true) {
     <button class="quick-action" type="button" data-quick-chat aria-label="Abrir chat" ${chatAvailable ? "" : "disabled"}>${icon("chat")}</button>
     <button class="quick-action" type="button" data-settings-toggle aria-label="Abrir configuración" aria-expanded="false">${icon("settings")}</button>
     <div class="game-settings-menu" data-settings-menu aria-hidden="true">
-      <div class="settings-menu-title"><span>${icon("settings")}</span><b>Configuración</b></div>
+      <div class="settings-menu-title"><span>${icon("settings")}</span><b>Configuración</b><button type="button" data-settings-close aria-label="Cerrar configuración">×</button></div>
       <button type="button" data-settings-draw ${chatAvailable ? "" : "disabled"}><span>½</span><b>Tablas</b></button>
       <button type="button" data-settings-resign class="is-danger"><span>⚑</span><b>Rendirse</b></button>
       <div class="settings-toggle-row"><span>${icon("volume")}<b>Movimientos y capturas</b></span><button type="button" role="switch" aria-label="Sonidos de movimientos y capturas" aria-checked="${sounds.moves}" class="mini-switch ${sounds.moves ? "is-on" : ""}" data-move-sound><i></i></button></div>
@@ -3025,18 +3025,29 @@ function bindGameSettings(actions: {
 }) {
   const menu = root.querySelector<HTMLElement>("[data-settings-menu]");
   const toggle = root.querySelector<HTMLButtonElement>("[data-settings-toggle]");
+  const sidebar = root.querySelector<HTMLElement>(".game-sidebar");
+  if (menu && sidebar) sidebar.append(menu);
   const closeMenu = () => {
     menu?.classList.remove("is-open");
     menu?.setAttribute("aria-hidden", "true");
     toggle?.setAttribute("aria-expanded", "false");
+    sidebar?.classList.remove("is-settings-visible");
   };
   toggle?.addEventListener("click", () => {
     const open = !menu?.classList.contains("is-open");
     menu?.classList.toggle("is-open", open);
     menu?.setAttribute("aria-hidden", String(!open));
     toggle.setAttribute("aria-expanded", String(open));
+    sidebar?.classList.toggle("is-settings-visible", open);
   });
-  root.querySelector<HTMLButtonElement>("[data-quick-chat]")?.addEventListener("click", () => actions.onChat?.());
+  root.querySelector("[data-settings-close]")?.addEventListener("click", closeMenu);
+  root.querySelectorAll<HTMLElement>(".board-shell").forEach((boardShell) => {
+    boardShell.addEventListener("pointerdown", closeMenu, { capture: true });
+  });
+  root.querySelector<HTMLButtonElement>("[data-quick-chat]")?.addEventListener("click", () => {
+    closeMenu();
+    actions.onChat?.();
+  });
   root.querySelector("[data-settings-draw]")?.addEventListener("click", () => {
     closeMenu();
     void actions.onDraw?.();
