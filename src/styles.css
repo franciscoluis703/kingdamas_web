@@ -1072,6 +1072,19 @@ a { color: inherit; text-decoration: none; }
 .board-column { min-width: 0; }
 .player-bar { position: relative; min-height: 72px; padding: 8px 10px; display: flex; align-items: center; gap: 10px; border-radius: 12px; transition: background .2s; }
 .player-bar.is-turn { background: rgba(53,211,148,.055); }
+.player-chat-cloud { position: absolute; z-index: 14; left: 60px; width: max-content; max-width: min(280px, calc(100% - 78px)); padding: 8px 11px 9px; color: #dce8e1; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; background: rgba(10,31,23,.97); box-shadow: 0 10px 28px rgba(0,0,0,.38); opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(5px) scale(.97); transform-origin: left center; }
+.player-chat-cloud::before { content: ""; position: absolute; left: 18px; width: 8px; height: 8px; border: inherit; background: inherit; transform: rotate(45deg); }
+.player-bar--opponent .player-chat-cloud { top: calc(100% - 5px); border-color: rgba(232,184,90,.25); }
+.player-bar--opponent .player-chat-cloud::before { top: -5px; border-right: 0; border-bottom: 0; }
+.player-bar--own .player-chat-cloud { bottom: calc(100% - 5px); border-color: rgba(53,211,148,.27); }
+.player-bar--own .player-chat-cloud::before { bottom: -5px; border-top: 0; border-left: 0; }
+.player-chat-cloud.is-visible { visibility: visible; animation: player-chat-cloud-in .24s ease-out both; }
+.player-chat-cloud small { display: block; margin-bottom: 2px; color: var(--green-bright); font-size: 7px; font-weight: 800; }
+.player-bar--opponent .player-chat-cloud small { color: var(--gold); }
+.player-chat-cloud p { margin: 0; display: -webkit-box; overflow: hidden; color: #eef4f0; font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
+.player-chat-cloud.is-emoji { min-width: 68px; text-align: center; }
+.player-chat-cloud.is-emoji p { display: block; font-size: 24px; line-height: 1.1; }
+@keyframes player-chat-cloud-in { from { opacity: 0; transform: translateY(7px) scale(.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .player-identity { min-width: 0; display: flex; align-items: center; gap: 11px; }
 .player-identity:hover b { color: var(--green-bright); }
 .player-identity > span:last-child { min-width: 0; display: grid; }
@@ -1232,7 +1245,7 @@ a { color: inherit; text-decoration: none; }
 .move-row:nth-child(odd) { background: rgba(255,255,255,.025); }
 .move-row span { color: #526a5e; }
 .move-row b { font-weight: 600; }
-.chat-panel { min-height: 0; display: grid; grid-template-rows: 1fr auto; }
+.chat-panel { min-height: 0; display: grid; grid-template-rows: 1fr auto auto; }
 .chat-messages { padding: 12px; overflow-y: auto; }
 .chat-placeholder { padding-top: 25px; color: #536b5f; font-size: 11px; line-height: 1.5; text-align: center; }
 .chat-message { position: relative; max-width: 85%; margin: 5px 0; padding: 8px 35px 8px 10px; border-radius: 9px 9px 9px 2px; background: rgba(255,255,255,.06); font-size: 11px; }
@@ -1240,9 +1253,15 @@ a { color: inherit; text-decoration: none; }
 .chat-message small { color: #6d8378; font-size: 8px; }
 .chat-message p { margin: 2px 0 0; overflow-wrap: anywhere; }
 .chat-message time { position: absolute; right: 6px; bottom: 5px; color: #597064; font-size: 7px; }
+.chat-emoji-picker { min-width: 0; padding: 7px 9px; display: flex; gap: 5px; overflow-x: auto; border-top: 1px solid var(--line); scrollbar-width: thin; scrollbar-color: rgba(53,211,148,.22) transparent; }
+.chat-emoji-picker button { width: 30px; height: 30px; flex: 0 0 auto; padding: 0; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.09); border-radius: 8px; background: rgba(255,255,255,.035); cursor: pointer; font-size: 16px; transition: transform .15s ease, background .15s ease, border-color .15s ease; }
+.chat-emoji-picker button:hover:not(:disabled) { border-color: rgba(53,211,148,.28); background: rgba(53,211,148,.09); transform: translateY(-1px) scale(1.06); }
+.chat-emoji-picker button:disabled { opacity: .45; }
 .chat-form { padding: 9px; display: grid; grid-template-columns: 1fr auto; gap: 7px; border-top: 1px solid var(--line); }
-.chat-form input { min-width: 0; height: 38px; padding: 0 11px; border: 1px solid var(--line); border-radius: 8px; outline: 0; color: #dce9e2; background: rgba(0,0,0,.16); font-size: 11px; }
+.chat-form label { position: relative; min-width: 0; display: block; }
+.chat-form input { width: 100%; min-width: 0; height: 38px; padding: 0 43px 0 11px; border: 1px solid var(--line); border-radius: 8px; outline: 0; color: #dce9e2; background: rgba(0,0,0,.16); font-size: 11px; }
 .chat-form input:focus { border-color: rgba(53,211,148,.45); }
+.chat-form label small { position: absolute; right: 8px; bottom: 5px; color: #526b5f; font-size: 7px; pointer-events: none; }
 .chat-form button { width: 38px; border: 0; border-radius: 8px; color: #082117; background: var(--green-bright); cursor: pointer; font-weight: 900; }
 .mode-pill--legend { color: var(--gold); border-color: rgba(232,184,90,.23); background: rgba(232,184,90,.07); }
 .machine-avatar { position: relative; width: 45px; height: 45px; flex: 0 0 auto; display: grid; place-items: center; overflow: hidden; color: #0b2118; border: 1px solid color-mix(in srgb, var(--legend-accent, #e8b85a) 70%, white); border-radius: 50%; background: linear-gradient(145deg, color-mix(in srgb, var(--legend-accent, #e8b85a) 75%, white), var(--legend-accent, #c9912f)); box-shadow: 0 8px 22px color-mix(in srgb, var(--legend-accent, #e8b85a) 25%, transparent); font: 900 19px var(--font-display); }
@@ -1599,6 +1618,8 @@ a { color: inherit; text-decoration: none; }
   .game-titlebar .text-button { display: none; }
   .game-titlebar { justify-content: space-between; }
   .player-bar { padding-inline: 2px; }
+  .player-chat-cloud { left: 43px; max-width: min(220px, calc(100% - 54px)); padding: 7px 9px 8px; }
+  .player-chat-cloud p { font-size: 10px; -webkit-line-clamp: 2; }
   .avatar--player { width: 38px; height: 38px; }
   .player-identity { gap: 7px; }
   .player-identity b { max-width: 105px; font-size: 11px; }

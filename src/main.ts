@@ -4,6 +4,7 @@ import { api, ApiError } from "./api";
 import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./config";
 import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
+import { CHALLENGE_EMOJIS, MAX_GAME_CHAT_LENGTH } from "./game/chat";
 import { applyMove, countPieces, createInitialBoard, getWinner, moveNotation, opponentOf } from "./game/engine";
 import { spectatorClockValue } from "./game/spectators";
 import { friendChallengeMessage, friendChallengeText } from "./sharing";
@@ -2934,6 +2935,7 @@ function mountGame(initialGame: Game) {
   let incomingRematch: DirectInvitation | null = null;
   let rematchState: "idle" | "sending" | "waiting" | "declined" | "error" = "idle";
   let rematchFeedback = "";
+  const chatCloudTimers: Partial<Record<Side, number>> = {};
 
   root.innerHTML = appLayout(`
     <section class="game-page">
@@ -2950,7 +2952,8 @@ function mountGame(initialGame: Game) {
           <div class="moves-panel"><div class="moves-list"></div></div>
           <div class="chat-panel">
             <div class="chat-messages"><div class="chat-placeholder">Aún no hay mensajes.<br>Saluda a tu rival.</div></div>
-            <form class="chat-form"><input maxlength="160" name="message" autocomplete="off" placeholder="Escribe un mensaje…" aria-label="Mensaje" /><button type="submit" aria-label="Enviar">↑</button></form>
+            <div class="chat-emoji-picker" role="toolbar" aria-label="Emojis desafiantes">${CHALLENGE_EMOJIS.map((emoji) => `<button type="button" data-chat-emoji="${emoji}" aria-label="Enviar ${emoji}">${emoji}</button>`).join("")}</div>
+            <form class="chat-form"><label><input maxlength="${MAX_GAME_CHAT_LENGTH}" name="message" autocomplete="off" placeholder="Escribe un mensaje…" aria-label="Mensaje, máximo ${MAX_GAME_CHAT_LENGTH} caracteres" /><small data-chat-counter>0/${MAX_GAME_CHAT_LENGTH}</small></label><button type="submit" aria-label="Enviar">↑</button></form>
           </div>
         </aside>
       </div>
@@ -2985,7 +2988,16 @@ function mountGame(initialGame: Game) {
     const previousMoveCount = game.moveCount;
     const wasActive = game.status === "active";
     game = { ...next, playerColor: next.playerColor || ownSide };
-    if (wasActive && game.status !== "active") completedAt = Date.now();
+    if (wasActive && game.status !== "active") {
+      completedAt = Date.now();
+      root.querySelectorAll<HTMLElement>("[data-chat-cloud]").forEach((cloud) => {
+        cloud.classList.remove("is-visible");
+        cloud.setAttribute("aria-hidden", "true");
+      });
+      Object.values(chatCloudTimers).forEach((timer) => {
+        if (timer) window.clearTimeout(timer);
+      });
+    }
     if (game.moveCount > previousMoveCount) {
       playMoveSound(game.moves.at(-1)?.captures ?? 0);
     }
@@ -3236,27 +3248,82 @@ function mountGame(initialGame: Game) {
     container.scrollTop = container.scrollHeight;
   };
 
-  root.querySelector<HTMLFormElement>(".chat-form")?.addEventListener("submit", async (event) => {
+  const showChatCloud = (message: ChatMessage) => {
+    if (game.status !== "active") return;
+    const side = message.playerColor;
+    const cloud = root.querySelector<HTMLElement>(`[data-chat-cloud="${side}"]`);
+    if (!cloud) return;
+    const username = cloud.querySelector<HTMLElement>("small");
+    const content = cloud.querySelector<HTMLElement>("p");
+    if (username) username.textContent = `@${message.username}`;
+    if (content) content.textContent = message.message;
+    cloud.classList.toggle("is-emoji", message.kind === "emoji");
+    cloud.classList.remove("is-visible");
+    void cloud.offsetWidth;
+    cloud.classList.add("is-visible");
+    cloud.setAttribute("aria-hidden", "false");
+    if (chatCloudTimers[side]) window.clearTimeout(chatCloudTimers[side]);
+    chatCloudTimers[side] = window.setTimeout(() => {
+      cloud.classList.remove("is-visible");
+      cloud.setAttribute("aria-hidden", "true");
+      chatCloudTimers[side] = undefined;
+    }, 4_500);
+  };
+
+  const addLiveMessage = (message: ChatMessage) => {
+    if (String(message.gameId) !== game.id || messages.some((item) => item.id === message.id)) return;
+    messages.push(message);
+    renderMessages();
+    showChatCloud(message);
+  };
+
+  const sendChatMessage = async (value: string, kind: "text" | "emoji") => {
+    try {
+      addLiveMessage((await api.sendMessage(game.id, value, kind)).message);
+      return true;
+    } catch (error) {
+      toast(errorMessage(error), "error");
+      return false;
+    }
+  };
+
+  const chatForm = root.querySelector<HTMLFormElement>(".chat-form");
+  const chatInput = chatForm?.elements.namedItem("message") as HTMLInputElement | null;
+  const chatCounter = root.querySelector<HTMLElement>("[data-chat-counter]");
+  const updateChatCounter = () => {
+    if (chatCounter) chatCounter.textContent = `${Array.from(chatInput?.value ?? "").length}/${MAX_GAME_CHAT_LENGTH}`;
+  };
+  chatInput?.addEventListener("input", updateChatCounter);
+  chatForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
     const form = event.currentTarget as HTMLFormElement;
     const input = form.elements.namedItem("message") as HTMLInputElement;
     const value = input.value.trim();
     if (!value) return;
+    if (Array.from(value).length > MAX_GAME_CHAT_LENGTH) {
+      toast(`El mensaje no puede superar ${MAX_GAME_CHAT_LENGTH} caracteres.`, "error");
+      return;
+    }
     input.value = "";
-    try {
-      const response = await api.sendMessage(game.id, value);
-      if (!messages.some((item) => item.id === response.message.id)) messages.push(response.message);
-      renderMessages();
-    } catch (error) { toast(errorMessage(error), "error"); }
+    updateChatCounter();
+    if (!(await sendChatMessage(value, "text"))) {
+      input.value = value;
+      updateChatCounter();
+    }
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-chat-emoji]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const emoji = button.dataset.chatEmoji;
+      if (!emoji || button.disabled) return;
+      button.disabled = true;
+      try { await sendChatMessage(emoji, "emoji"); }
+      finally { button.disabled = false; }
+    });
   });
 
   void api.messages(game.id).then((response) => { messages = response.messages; renderMessages(); }).catch(() => {});
   const socketGameUpdate = (next: Game) => { if (String(next.id) === game.id) update({ ...next, playerColor: ownSide }); };
-  const socketMessage = (message: ChatMessage) => {
-    if (String(message.gameId) !== game.id || messages.some((item) => item.id === message.id)) return;
-    messages.push(message);
-    renderMessages();
-  };
+  const socketMessage = (message: ChatMessage) => addLiveMessage(message);
   const socketSpectatorUpdate = (payload: { gameId: string; count: number }) => {
     if (String(payload.gameId) !== game.id) return;
     const count = Math.max(Number(payload.count) || 0, 0);
@@ -3286,6 +3353,9 @@ function mountGame(initialGame: Game) {
     window.clearInterval(clockTimer);
     window.clearInterval(syncTimer);
     window.clearInterval(rematchTimer);
+    Object.values(chatCloudTimers).forEach((timer) => {
+      if (timer) window.clearTimeout(timer);
+    });
     if (sentRematchId) void api.cancelInvitation(sentRematchId).catch(() => {});
     socket?.emit("game:leave", game.id);
     socket?.off("game:state", socketGameUpdate);
@@ -3398,6 +3468,7 @@ function playerBar(player: Game["players"][Side], side: Side, placement: string,
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
     ${placement === "own" ? gameQuickActions(true) : ""}
+    <div class="player-chat-cloud" data-chat-cloud="${side}" aria-live="polite" aria-hidden="true"><small></small><p></p></div>
   </div>`;
 }
 

@@ -207,10 +207,10 @@ export const api = {
     }),
   messages: (id: string) =>
     request<{ messages: ChatMessage[] }>(`/online-games/${id}/messages`),
-  sendMessage: (id: string, message: string) =>
+  sendMessage: (id: string, message: string, kind: "text" | "emoji" = "text") =>
     request<{ message: ChatMessage }>(`/online-games/${id}/messages`, {
       method: "POST",
-      body: json({ kind: "text", message }),
+      body: json({ kind, message }),
     }),
   createLinkInvitation: (timeControlMinutes: number) =>
     request<{ invitation: LinkInvitation }>("/link-invitations", {
