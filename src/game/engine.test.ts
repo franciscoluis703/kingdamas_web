@@ -76,6 +76,14 @@ describe("motor 10×10 del cliente", () => {
   it("ordena las leyendas de menor a mayor dificultad", () => {
     expect(LEGENDS).toHaveLength(20);
     expect(new Set(LEGENDS.map((legend) => legend.key))).toHaveProperty("size", 20);
+    expect(LEGENDS.map((legend) => legend.key)).toEqual([
+      "facil", "aprendiz", "normal", "competente", "avanzado",
+      "veterano", "experto", "maestro", "imposible", "sobrehumano",
+      "implacable", "titan", "mitico", "legendario", "trascendental",
+      "sobrenatural", "insuperable", "divino", "absoluto", "coronaeterna",
+    ]);
+    expect(new Set(LEGENDS.map((legend) => legend.portrait))).toHaveProperty("size", 20);
+    expect(LEGENDS.every((legend) => legend.portrait.endsWith(`${legend.key}.avif`))).toBe(true);
     for (let index = 1; index < LEGENDS.length; index += 1) {
       expect(LEGENDS[index]!.level).toBe(index + 1);
       expect(LEGENDS[index]!.rating).toBeGreaterThan(LEGENDS[index - 1]!.rating);

@@ -1991,6 +1991,14 @@ async function renderSharedInvitation(token: string) {
   }
 }
 
+function legendAvatarMarkup(
+  legend: Legend,
+  className = "",
+  lazy = false,
+) {
+  return `<span class="machine-avatar ${className}" role="img" aria-label="Retrato de ${escapeHtml(legend.name)}"><span aria-hidden="true">${escapeHtml(legend.sigil)}</span><img src="${escapeHtml(legend.portrait)}" alt="" width="128" height="128" decoding="async"${lazy ? ' loading="lazy"' : ""}></span>`;
+}
+
 function legendRoadCardMarkup(
   legend: Legend,
   unlocked: boolean,
@@ -2006,9 +2014,9 @@ function legendRoadCardMarkup(
   const state = defeated ? "is-defeated" : unlocked ? "is-unlocked" : "is-locked";
   return `<article class="legend-road-card ${state}" style="--legend-accent:${legend.accent}">
     <span class="legend-road-level"><i>${legend.level}</i></span>
-    <span class="machine-avatar legend-road-avatar">${escapeHtml(legend.sigil)}</span>
+    ${legendAvatarMarkup(legend, "legend-road-avatar", true)}
     <div class="legend-road-copy"><small>ACTO ${chapter} · NIVEL ${legend.level}</small><h2>${escapeHtml(legend.name)}</h2><b>${escapeHtml(legend.epithet)} · ${escapeHtml(legend.difficulty)}</b><p>${escapeHtml(legend.description)}</p><div class="legend-strength" aria-label="Dificultad ${legend.level} de ${LEGENDS.length}">${LEGENDS.map((_, index) => `<i class="${index < legend.level ? "is-filled" : ""}"></i>`).join("")}</div></div>
-    <div class="legend-road-action"><span>${defeated ? "✓ Derrotada" : unlocked ? `${legend.rating.toLocaleString("es-DO")} fuerza` : "Bloqueada"}</span>${unlocked ? `<button class="button ${legend.level === LEGENDS.length ? "button--legend" : "button--outline"} button--small" type="button" data-play-legend="${legend.key}">${defeated ? "Jugar de nuevo" : "Desafiar"}</button>` : `<i aria-label="Nivel bloqueado">🔒</i>`}</div>
+    <div class="legend-road-action"><span>${defeated ? "✓ Superado" : unlocked ? `${legend.rating.toLocaleString("es-DO")} fuerza` : "Bloqueado"}</span>${unlocked ? `<button class="button ${legend.level === LEGENDS.length ? "button--legend" : "button--outline"} button--small" type="button" data-play-legend="${legend.key}">${defeated ? "Jugar de nuevo" : "Desafiar"}</button>` : `<i aria-label="Nivel bloqueado">🔒</i>`}</div>
     <span class="legend-road-connector" aria-hidden="true"></span>
   </article>`;
 }
@@ -2030,7 +2038,7 @@ async function renderLegendRoadmap(timeControl: TimeControl) {
     ) || LEGENDS[Math.min(unlockedCount - 1, LEGENDS.length - 1)];
     root.innerHTML = appLayout(`<section class="legend-road-page">
       <header class="legend-road-hero">
-        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>20 RIVALES · 4 ACTOS</span><h1>Camino de Leyendas</h1><p>Supera veinte personajes, desde una rival ideal para aprender hasta un soberano casi imposible de vencer. Cada victoria abre el siguiente duelo.</p></div>
+        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>20 RIVALES · 4 ACTOS</span><h1>Camino de Leyendas</h1><p>Supera veinte personajes mitológicos, desde un espíritu ideal para aprender hasta Hades, casi imposible de vencer. Cada victoria abre el siguiente duelo.</p></div>
         <div class="legend-road-progress"><span>${icon("crown")}</span><p><small>CAMINO COMPLETADO</small><b>${defeatedCount} <i>/ ${LEGENDS.length}</i></b><em><i style="width:${(defeatedCount / LEGENDS.length) * 100}%"></i></em></p></div>
       </header>
       <section class="legend-road-toolbar panel"><div><span class="section-kicker">RELOJ POR JUGADOR</span><div>${TIME_CONTROLS.map((minutes) => `<button class="${minutes === timeControl ? "is-active" : ""}" type="button" data-legend-road-time="${minutes}">${minutes} min</button>`).join("")}</div></div><p><b>Práctica sin riesgo</b><small>Estas partidas no modifican tu Elo Damas.</small></p>${nextLegend ? `<button class="button button--legend" type="button" data-play-legend="${nextLegend.key}">${icon("play")} Continuar con ${escapeHtml(nextLegend.name)}</button>` : ""}</section>
@@ -2111,7 +2119,7 @@ async function renderLegendGame(
       <div class="game-layout">
         <section class="board-column">
           <div class="player-bar player-bar--opponent" data-player-bar="mahogany">
-            <div class="player-identity"><span class="machine-avatar">${escapeHtml(legend.sigil)}</span><span><span class="player-name-line"><i title="Rival virtual">🌐</i><b>${escapeHtml(legend.name)}</b></span><small>${escapeHtml(legend.epithet)} · ${escapeHtml(legend.difficulty)}</small></span></div>
+            <div class="player-identity">${legendAvatarMarkup(legend)}<span><span class="player-name-line"><i title="Rival virtual">🌐</i><b>${escapeHtml(legend.name)}</b></span><small>${escapeHtml(legend.epithet)} · ${escapeHtml(legend.difficulty)}</small></span></div>
             ${playerLiveData("mahogany", legend.rating, 20, formatClock(clocks.mahogany))}
             <div class="turn-indicator"><i></i><span data-machine-state>Jugando</span></div>
           </div>
@@ -2125,7 +2133,7 @@ async function renderLegendGame(
         </section>
         <aside class="game-sidebar legend-sidebar">
           <div class="legend-profile">
-            <span class="machine-avatar machine-avatar--large">${escapeHtml(legend.sigil)}</span>
+            ${legendAvatarMarkup(legend, "machine-avatar--large")}
             <span class="section-kicker">LEYENDA ${legend.level} DE ${LEGENDS.length}</span>
             <h2>${escapeHtml(legend.name)}</h2>
             <b>${escapeHtml(legend.epithet)}</b>
