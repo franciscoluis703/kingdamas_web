@@ -681,13 +681,15 @@ a { color: inherit; text-decoration: none; }
 .world-title-holders > header h3 { margin: 0; color: #efe5c7; font-size: 15px; }
 .world-title-holders > header p { margin: 0; color: #8d9e95; font-size: 10px; line-height: 1.45; }
 .world-title-holders > div { margin-top: 11px; display: grid; gap: 6px; }
-.world-title-holders article { min-width: 0; min-height: 54px; padding: 7px 8px; display: grid; grid-template-columns: 31px 38px minmax(0,1fr) auto; align-items: center; gap: 7px; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: rgba(5,15,11,.3); }
-.world-title-holders article.is-gold { border-color: rgba(232,184,90,.2); }
-.world-title-holders article > span:not(.world-trophy) { min-width: 0; display: grid; gap: 1px; }
-.world-title-holders article small { color: #9c9175; font-size: 8px; font-weight: 800; text-transform: uppercase; }
-.world-title-holders article b { overflow: hidden; color: #e5ece8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
-.world-title-holders article em { overflow: hidden; color: #788d82; font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.world-title-holders article > strong { padding: 4px 6px; color: var(--green-bright); border-radius: 5px; background: rgba(53,211,148,.065); font-size: 7px; letter-spacing: .04em; white-space: nowrap; }
+.world-title-holder { min-width: 0; min-height: 54px; padding: 7px 8px; display: grid; grid-template-columns: 31px 38px minmax(0,1fr) auto auto; align-items: center; gap: 7px; color: inherit; border: 1px solid rgba(255,255,255,.07); border-radius: 9px; background: rgba(5,15,11,.3); cursor: pointer; text-align: left; transition: border-color .16s ease, background .16s ease; }
+.world-title-holder:hover { border-color: rgba(53,211,148,.24); background: rgba(53,211,148,.045); }
+.world-title-holder.is-gold { border-color: rgba(232,184,90,.2); }
+.world-title-holder > span:not(.world-trophy) { min-width: 0; display: grid; gap: 1px; }
+.world-title-holder small { color: #9c9175; font-size: 8px; font-weight: 800; text-transform: uppercase; }
+.world-title-holder b { overflow: hidden; color: #e5ece8; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.world-title-holder em { overflow: hidden; color: #788d82; font-size: 9px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
+.world-title-holder > strong { padding: 4px 6px; color: var(--green-bright); border-radius: 5px; background: rgba(53,211,148,.065); font-size: 7px; letter-spacing: .04em; white-space: nowrap; }
+.world-title-holder > i { color: #7f907f; font-size: 17px; font-style: normal; }
 .world-trophy--podium { width: 31px; height: 31px; background: transparent; }
 .world-trophy--podium img { width: 30px; height: 30px; }
 .avatar--world-holder { width: 38px; height: 38px; font-size: 9px; }
@@ -1385,8 +1387,9 @@ a { color: inherit; text-decoration: none; }
   .tournament-facts > span:nth-child(3) { border-left: 0; border-top: 1px solid var(--line); }
   .tournament-facts > span:nth-child(4) { border-top: 1px solid var(--line); }
   .world-title-holders { padding: 11px 9px; }
-  .world-title-holders article { grid-template-columns: 28px 35px minmax(0,1fr); }
-  .world-title-holders article > strong { grid-column: 3; width: max-content; }
+  .world-title-holder { grid-template-columns: 28px 35px minmax(0,1fr) auto; }
+  .world-title-holder > strong { grid-column: 3; width: max-content; }
+  .world-title-holder > i { grid-column: 4; grid-row: 1 / span 2; }
   .world-trophy--podium, .world-trophy--podium img { width: 28px; height: 28px; }
   .avatar--world-holder { width: 35px; height: 35px; }
   .tournament-timeline { grid-template-columns: 1fr; }

@@ -1334,6 +1334,7 @@ function tournamentParticipantCards(participants: TournamentParticipant[]) {
 
 function tournamentPlayerProfileMarkup(
   response: Awaited<ReturnType<typeof api.playerStatistics>>,
+  backLabel = "Todos los inscritos",
 ) {
   const profile = response.profile;
   const mode = response.modes.find((item) => item.boardSize === 10) ?? response.modes[0];
@@ -1341,10 +1342,10 @@ function tournamentPlayerProfileMarkup(
     ? new Date(profile.memberSince).toLocaleDateString("es-DO", { month: "short", year: "numeric" })
     : "—";
   return `<section class="tournament-player-profile">
-    <button class="tournament-profile-back" type="button" data-back-participants>← Todos los inscritos</button>
+    <button class="tournament-profile-back" type="button" data-back-participants>← ${escapeHtml(backLabel)}</button>
     <div class="tournament-profile-hero">
       ${avatarMarkup(profile, "avatar avatar--tournament-profile")}
-      <span><small>JUGADOR INSCRITO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].label)}</strong>` : ""}</span>
+      <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].label)}</strong>` : ""}</span>
       ${!profile.isSelf ? `<button class="button ${profile.isFollowing ? "button--quiet" : "button--primary"} button--small" type="button" data-follow-tournament-player="${escapeHtml(profile.username)}" ${profile.isFollowing ? "disabled" : ""}>${profile.isFollowing ? "✓ En tus amigos" : `${icon("userPlus")} Agregar amigo`}</button>` : `<span class="tournament-own-profile">Tu perfil</span>`}
     </div>
     <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString("es-DO") ?? mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
@@ -1420,12 +1421,12 @@ function worldTitleHoldersMarkup(world: WorldChampionshipResponse) {
   const placeLabel = { gold: "Primer lugar", silver: "Segundo lugar", bronze: "Tercer lugar" } as const;
   return `<section class="world-title-holders">
     <header><span><small>PODIO MUNDIAL VIGENTE</small><h3>Campeones con pase directo</h3></span><p>Conservan el trofeo hasta que el próximo Campeonato Mundial defina un nuevo podio.</p></header>
-    <div>${holders.map((holder) => `<article class="is-${holder.worldTitle.placement}">
+    <div>${holders.map((holder) => `<button class="world-title-holder is-${holder.worldTitle.placement}" type="button" data-world-profile="${escapeHtml(holder.username)}" aria-label="Ver perfil de ${escapeHtml(holder.name)}">
       ${worldTrophyMarkup(holder, "world-trophy--podium")}
       ${avatarMarkup(holder, "avatar avatar--world-holder")}
       <span><small>${placeLabel[holder.worldTitle.placement]}</small><b>${escapeHtml(holder.name)}</b><em>${flag(holder.countryCode)} @${escapeHtml(holder.username)}</em></span>
-      <strong>✓ PASE DIRECTO</strong>
-    </article>`).join("")}</div>
+      <strong>✓ PASE DIRECTO</strong><i aria-hidden="true">›</i>
+    </button>`).join("")}</div>
   </section>`;
 }
 
@@ -1508,7 +1509,7 @@ function tournamentsMarkup(
       <small class="tournament-entry-note">Al continuar confirmas que deseas participar bajo las reglas oficiales del torneo. El pago no mejora tu Elo ni concede ventajas.</small>
     </dialog>
     <dialog class="tournament-participants-dialog" aria-labelledby="tournament-participants-title">
-      <header><div><span class="section-kicker">CLASIFICATORIA ${qualifierYear}</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participants.length} ${participants.length === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
+      <header><div><span class="section-kicker">PERFILES DE TORNEO</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participants.length} ${participants.length === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
       <label class="tournament-participant-search" data-participant-search-wrap><span>${icon("search")}</span><input type="search" autocomplete="off" placeholder="Buscar en los inscritos…" data-participant-search /></label>
       <p class="tournament-participants-error" data-participants-error aria-live="polite"></p>
       <div class="tournament-participants-grid" data-participants-grid>${tournamentParticipantCards(participants)}</div>
@@ -1616,7 +1617,7 @@ function bindTournaments(
       button.addEventListener("click", () => void showPlayerProfile(button.dataset.tournamentProfile || ""));
     });
   };
-  const showPlayerProfile = async (username: string) => {
+  const showPlayerProfile = async (username: string, fromWorldPodium = false) => {
     if (!participantsGrid || !username) return;
     participantsGrid.innerHTML = `<div class="tournament-profile-loading"><span class="loader"></span><p>Cargando perfil…</p></div>`;
     if (participantsTitle) participantsTitle.textContent = "Perfil del jugador";
@@ -1625,8 +1626,14 @@ function bindTournaments(
     if (participantsError) participantsError.textContent = "";
     try {
       const response = await api.playerStatistics(username);
-      participantsGrid.innerHTML = tournamentPlayerProfileMarkup(response);
-      participantsGrid.querySelector("[data-back-participants]")?.addEventListener("click", () => showParticipantList());
+      participantsGrid.innerHTML = tournamentPlayerProfileMarkup(
+        response,
+        fromWorldPodium ? "Volver al Campeonato Mundial" : "Todos los inscritos",
+      );
+      participantsGrid.querySelector("[data-back-participants]")?.addEventListener("click", () => {
+        if (fromWorldPodium) participantsDialog?.close();
+        else showParticipantList();
+      });
       participantsGrid.querySelector<HTMLButtonElement>("[data-follow-tournament-player]")?.addEventListener("click", async (event) => {
         const button = event.currentTarget as HTMLButtonElement;
         button.disabled = true;
@@ -1641,8 +1648,11 @@ function bindTournaments(
         }
       });
     } catch (error) {
-      participantsGrid.innerHTML = `<div class="tournament-participants-empty"><b>No pudimos cargar el perfil</b><p>${escapeHtml(errorMessage(error))}</p><button type="button" data-back-participants>Volver a los inscritos</button></div>`;
-      participantsGrid.querySelector("[data-back-participants]")?.addEventListener("click", () => showParticipantList());
+      participantsGrid.innerHTML = `<div class="tournament-participants-empty"><b>No pudimos cargar el perfil</b><p>${escapeHtml(errorMessage(error))}</p><button type="button" data-back-participants>${fromWorldPodium ? "Volver al Campeonato Mundial" : "Volver a los inscritos"}</button></div>`;
+      participantsGrid.querySelector("[data-back-participants]")?.addEventListener("click", () => {
+        if (fromWorldPodium) participantsDialog?.close();
+        else showParticipantList();
+      });
     }
   };
   root.querySelector("[data-open-tournament-participants]")?.addEventListener("click", () => {
@@ -1650,6 +1660,13 @@ function bindTournaments(
     if (participantSearch) participantSearch.value = "";
     showParticipantList();
     participantsDialog.showModal();
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-world-profile]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!participantsDialog) return;
+      participantsDialog.showModal();
+      void showPlayerProfile(button.dataset.worldProfile || "", true);
+    });
   });
   participantsDialog?.querySelector("[data-close-tournament-participants]")?.addEventListener("click", () => participantsDialog.close());
   participantsDialog?.addEventListener("click", (event) => {
