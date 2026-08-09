@@ -6,6 +6,7 @@ import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
 import { applyMove, countPieces, createInitialBoard, getWinner, moveNotation, opponentOf } from "./game/engine";
 import { spectatorClockValue } from "./game/spectators";
+import { friendChallengeMessage, friendChallengeText } from "./sharing";
 import {
   LEGENDS,
   legendByKey,
@@ -798,8 +799,9 @@ function playPageMarkup(rating: Rating | undefined) {
       <span class="section-kicker">DESAFÍO PRIVADO · 10×10</span>
       <h2>Invita a un amigo</h2>
       <p>Comparte este enlace. La primera persona que lo acepte jugará contigo a <strong data-invite-time>${selectedTime} minutos</strong>.</p>
+      <div class="invite-share-preview" data-invite-share-preview></div>
       <label class="share-link-field"><span>Enlace de invitación</span><span><input readonly data-invite-url aria-label="Enlace de invitación" /><button type="button" data-copy-invite aria-label="Copiar enlace">${icon("copy")}</button></span></label>
-      <div class="invite-actions"><button class="button button--primary" type="button" data-share-invite>${icon("share")} Compartir</button><button class="button button--quiet" type="button" data-copy-invite-text>${icon("copy")} Copiar enlace</button></div>
+      <div class="invite-actions"><button class="button button--primary" type="button" data-share-invite>${icon("share")} Compartir desafío</button><button class="button button--quiet" type="button" data-copy-invite-text>${icon("copy")} Copiar mensaje</button></div>
       <div class="invite-wait"><i class="status-dot"></i><span><b>Esperando a tu amigo…</b><small>El enlace vence en 60 minutos</small></span></div>
       <p class="friend-invite-error"></p>
       <button class="text-button text-button--danger" type="button" data-cancel-friend>Cancelar invitación</button>
@@ -1963,10 +1965,16 @@ function openFriendChallenge(invitation: LinkInvitation) {
   const backdrop = root.querySelector<HTMLElement>("[data-match-backdrop]");
   const input = modal?.querySelector<HTMLInputElement>("[data-invite-url]");
   const time = modal?.querySelector<HTMLElement>("[data-invite-time]");
+  const preview = modal?.querySelector<HTMLElement>("[data-invite-share-preview]");
   if (!token || !modal || !input) return;
   const url = invitationUrl(token);
+  const challengeText = friendChallengeText(invitation);
+  const challengeMessage = friendChallengeMessage(invitation, url);
   input.value = url;
   if (time) time.textContent = `${invitation.timeControlMinutes} minutos`;
+  if (preview) {
+    preview.innerHTML = `${avatarMarkup(invitation.sender, "avatar avatar--invite-preview")}<span><small>MENSAJE PARA TU AMIGO</small><b>@${escapeHtml(invitation.sender.username)} te desafía</b><em>¿Tienes lo necesario para arrebatarle la corona?</em></span>`;
+  }
   modal.classList.add("is-visible");
   modal.setAttribute("aria-hidden", "false");
   backdrop?.classList.add("is-visible");
@@ -1982,13 +1990,22 @@ function openFriendChallenge(invitation: LinkInvitation) {
     }
   };
   modal.querySelector("[data-copy-invite]")?.addEventListener("click", () => void showCopied());
-  modal.querySelector("[data-copy-invite-text]")?.addEventListener("click", () => void showCopied());
+  modal.querySelector("[data-copy-invite-text]")?.addEventListener("click", async () => {
+    try {
+      await copyText(challengeMessage);
+      toast("Mensaje desafiante copiado. Envíalo a tu amigo.");
+    } catch {
+      input.focus();
+      input.select();
+      toast("No pudimos copiar el mensaje.", "error");
+    }
+  });
   modal.querySelector("[data-share-invite]")?.addEventListener("click", async () => {
     if (!navigator.share) return showCopied();
     try {
       await navigator.share({
-        title: `@${currentUser?.username ?? "jugador"} te desafía en King Damas`,
-        text: `¿Aceptas una partida de damas 10×10 a ${invitation.timeControlMinutes} minutos?`,
+        title: `@${invitation.sender.username} te reta por la corona`,
+        text: challengeText,
         url,
       });
     } catch (error) {

@@ -2,8 +2,11 @@ import { describe, expect, it } from "vitest";
 import worker, {
   assetCacheControl,
   canonicalUrl,
+  invitationPreviewImageUrl,
+  invitationTokenFromUrl,
   upstreamRequest,
   upstreamUrl,
+  withInvitationMetadata,
   withAssetCaching,
 } from "./index.js";
 
@@ -56,5 +59,29 @@ describe("proxy de Cloudflare", () => {
   it("no inmoviliza el documento principal en la caché del navegador", () => {
     expect(assetCacheControl("/")).toBeNull();
     expect(assetCacheControl("/index.html")).toBeNull();
+  });
+
+  it("reconoce únicamente tokens válidos de invitación", () => {
+    const token = "abcdefghijklmnopqrstuvwxyzABCDEF";
+    expect(invitationTokenFromUrl(`https://kingdamas.com/?invitacion=${token}`)).toBe(token);
+    expect(invitationTokenFromUrl("https://kingdamas.com/?invitacion=corto")).toBeNull();
+  });
+
+  it("inyecta una tarjeta social personalizada en el enlace compartido", async () => {
+    const token = "abcdefghijklmnopqrstuvwxyzABCDEF";
+    const response = await withInvitationMetadata(
+      new Response('<html><head><meta property="og:image" content="/brand/default.png" /></head><body></body></html>', {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+      `https://kingdamas.com/?invitacion=${token}`,
+      token,
+    );
+    const html = await response.text();
+    expect(html).toContain("¿Te atreves a aceptar este desafío?");
+    expect(html).toContain(invitationPreviewImageUrl(token));
+    expect(html).toContain(`https://kingdamas.com/?invitacion=${token}`);
+    expect(html).toContain("summary_large_image");
+    expect(html).not.toContain("/brand/default.png");
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 });
