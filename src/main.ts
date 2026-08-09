@@ -1,4 +1,4 @@
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import "./styles.css";
 import { api, ApiError } from "./api";
 import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./config";
@@ -84,8 +84,10 @@ let selectedTime: TimeControl = 10;
 let linkInvitationTimer: number | null = null;
 let currentRating: Rating | null = null;
 let paypalSdkPromise: Promise<PayPalNamespace> | null = null;
+let socketIoPromise: Promise<typeof import("socket.io-client")> | null = null;
 
 const LEGAL_CONSENT_VERSION = "2026-08-09";
+const SESSION_HINT_KEY = "kingdamas_session_hint";
 const LEGAL_ROUTES = [
   { path: "/acerca-de", label: "Acerca de", shortLabel: "Acerca de" },
   { path: "/contacto", label: "Contacto", shortLabel: "Contacto" },
@@ -132,6 +134,7 @@ function bindNavigation() {
     } finally {
       currentUser = null;
       currentRating = null;
+      setSessionHint(false);
       socket?.disconnect();
       socket = null;
       navigate("/inicio");
@@ -194,7 +197,7 @@ function bindLegalConsent() {
 }
 
 function brandMarkMarkup() {
-  return `<span class="brand-mark"><img src="/brand/icon-192.png?v=green-1" alt="" /></span>`;
+  return `<span class="brand-mark"><img src="/favicon-64.png?v=green-1" width="64" height="64" alt="" /></span>`;
 }
 
 function logoMarkup() {
@@ -523,8 +526,9 @@ function bindAuthDialog() {
               password: String(data.get("password")),
             });
         currentUser = response.user;
+        setSessionHint(true);
         dialog.close();
-        connectRealtime();
+        await connectRealtime();
         navigate("/inicio");
         toast(`Bienvenido, ${currentUser.name}.`);
       } catch (requestError) {
@@ -3042,7 +3046,9 @@ function formatDuration(totalSeconds: number) {
   return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
-function connectRealtime() {
+async function connectRealtime() {
+  const { io } = await (socketIoPromise ??= import("socket.io-client"));
+  if (!currentUser) return;
   socket?.disconnect();
   socket = io(SOCKET_URL, { withCredentials: true, transports: ["websocket", "polling"] });
   socket.on("matchmaking:matched", (game: Game) => {
@@ -3052,6 +3058,15 @@ function connectRealtime() {
   socket.on("connect_error", (error) => {
     console.warn("Tiempo real no disponible; se usará sincronización HTTP.", error.message);
   });
+}
+
+function setSessionHint(active: boolean) {
+  try {
+    if (active) localStorage.setItem(SESSION_HINT_KEY, "1");
+    else localStorage.removeItem(SESSION_HINT_KEY);
+  } catch {
+    // La sesión HTTP continúa funcionando aunque el almacenamiento esté bloqueado.
+  }
 }
 
 async function renderRoute() {
@@ -3092,18 +3107,17 @@ async function renderRoute() {
   return renderDashboard();
 }
 
-async function bootstrap() {
-  root.innerHTML = loadingMarkup();
-  try {
-    currentUser = (await api.me()).user;
-    connectRealtime();
-  } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 401) {
-      console.warn("No se pudo recuperar la sesión.", error);
-    }
+let routeListenerBound = false;
+
+export async function startApp(user: User | null) {
+  currentUser = user;
+  if (!routeListenerBound) {
+    window.addEventListener("hashchange", () => void renderRoute());
+    routeListenerBound = true;
+  }
+  if (currentUser) {
+    setSessionHint(true);
+    await connectRealtime();
   }
   await renderRoute();
 }
-
-window.addEventListener("hashchange", () => void renderRoute());
-void bootstrap();
