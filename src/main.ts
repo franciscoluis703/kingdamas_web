@@ -230,6 +230,22 @@ function logoMarkup() {
   return `${brandMarkMarkup()}<span class="brand-name">King <b>Damas</b></span>`;
 }
 
+const WORLD_TROPHY_DETAILS = {
+  gold: { image: "/assets/trophies/world-gold.png", label: "Campeón Mundial · primer lugar" },
+  silver: { image: "/assets/trophies/world-silver.png", label: "Campeón Mundial · segundo lugar" },
+  bronze: { image: "/assets/trophies/world-bronze.png", label: "Campeón Mundial · tercer lugar" },
+} as const;
+
+function worldTrophyMarkup(
+  player: Pick<User, "worldTitle">,
+  extraClass = "",
+) {
+  const title = player.worldTitle;
+  if (!title) return "";
+  const trophy = WORLD_TROPHY_DETAILS[title.placement];
+  return `<span class="world-trophy ${extraClass}" title="${escapeHtml(trophy.label)}" aria-label="${escapeHtml(trophy.label)}"><img src="${trophy.image}" width="32" height="32" alt="" /></span>`;
+}
+
 function publicHeader() {
   return `
     <header class="public-header container">
@@ -272,7 +288,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
           <button class="mobile-brand brand brand--button" type="button" data-route="/inicio">${logoMarkup()}</button>
           <button class="account-chip" type="button" data-open-profile-photo aria-label="Cambiar foto de perfil">
             <span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--small">${avatar}</span>
-            <span class="account-copy"><b>${escapeHtml(currentUser.name)}</b><small>@${escapeHtml(currentUser.username)}</small></span>
+            <span class="account-copy"><span class="account-name-line"><b>${escapeHtml(currentUser.name)}</b>${worldTrophyMarkup(currentUser, "world-trophy--account")}</span><small>@${escapeHtml(currentUser.username)}</small></span>
             <span class="account-camera" aria-hidden="true">${icon("camera")}</span>
           </button>
         </header>
@@ -1310,7 +1326,7 @@ function tournamentParticipantCards(participants: TournamentParticipant[]) {
   }
   return participants.map((participant) => `<button class="tournament-participant-card" type="button" data-tournament-profile="${escapeHtml(participant.username)}">
     ${avatarMarkup(participant, "avatar avatar--tournament")}
-    <span><b>${escapeHtml(participant.name)}</b><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small><em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
+    <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small><em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
     <strong>${participant.rating.toLocaleString("es-DO")}<small>Elo Damas</small></strong>
     <i aria-hidden="true">→</i>
   </button>`).join("");
@@ -1328,7 +1344,7 @@ function tournamentPlayerProfileMarkup(
     <button class="tournament-profile-back" type="button" data-back-participants>← Todos los inscritos</button>
     <div class="tournament-profile-hero">
       ${avatarMarkup(profile, "avatar avatar--tournament-profile")}
-      <span><small>JUGADOR INSCRITO</small><h3>${escapeHtml(profile.name)}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em></span>
+      <span><small>JUGADOR INSCRITO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].label)}</strong>` : ""}</span>
       ${!profile.isSelf ? `<button class="button ${profile.isFollowing ? "button--quiet" : "button--primary"} button--small" type="button" data-follow-tournament-player="${escapeHtml(profile.username)}" ${profile.isFollowing ? "disabled" : ""}>${profile.isFollowing ? "✓ En tus amigos" : `${icon("userPlus")} Agregar amigo`}</button>` : `<span class="tournament-own-profile">Tu perfil</span>`}
     </div>
     <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString("es-DO") ?? mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
@@ -1398,6 +1414,21 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
     <p class="qualifier-bracket-note">Los cruces son nacionales y dinámicos. Si una ronda tiene un número impar de jugadores, uno descansa; el sistema rota ese descanso y evita repetir rivales cuando existe otra pareja disponible.</p>`;
 }
 
+function worldTitleHoldersMarkup(world: WorldChampionshipResponse) {
+  const holders = world.titleHolders ?? [];
+  if (!holders.length) return "";
+  const placeLabel = { gold: "Primer lugar", silver: "Segundo lugar", bronze: "Tercer lugar" } as const;
+  return `<section class="world-title-holders">
+    <header><span><small>PODIO MUNDIAL VIGENTE</small><h3>Campeones con pase directo</h3></span><p>Conservan el trofeo hasta que el próximo Campeonato Mundial defina un nuevo podio.</p></header>
+    <div>${holders.map((holder) => `<article class="is-${holder.worldTitle.placement}">
+      ${worldTrophyMarkup(holder, "world-trophy--podium")}
+      ${avatarMarkup(holder, "avatar avatar--world-holder")}
+      <span><small>${placeLabel[holder.worldTitle.placement]}</small><b>${escapeHtml(holder.name)}</b><em>${flag(holder.countryCode)} @${escapeHtml(holder.username)}</em></span>
+      <strong>✓ PASE DIRECTO</strong>
+    </article>`).join("")}</div>
+  </section>`;
+}
+
 function tournamentsMarkup(
   qualifier: QualifierTournamentResponse,
   world: WorldChampionshipResponse,
@@ -1414,6 +1445,9 @@ function tournamentsMarkup(
   const entryFee = Number(qualifier.entryFee.amount).toFixed(2);
   const canRegister = Boolean(
     qualifierTournament?.status === "open" && !qualifier.viewer?.registered,
+  );
+  const viewerHasWorldPlace = Boolean(
+    worldTournament?.isParticipant || world.viewer?.directlyQualified,
   );
   const registrationEnd = new Date(Date.UTC(qualifierYear, 5, 25, 23, 59, 59));
   const qualifierStarts = new Date(Date.UTC(qualifierYear, 5, 26));
@@ -1456,9 +1490,10 @@ function tournamentsMarkup(
         <header><span class="tournament-emblem">${icon("crown")}</span><div><small>ETAPA 2 · ${worldYear}</small><h2>Campeonato<br>Mundial</h2></div><span class="tournament-status ${worldState.className}"><i></i>${worldState.label}</span></header>
         <p class="tournament-description">Los representantes de cada país se enfrentan en la máxima competencia anual de King Damas.</p>
         <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inicio</small><b>${tournamentDate(worldStarts)}</b></span><span><small>Final</small><b>${tournamentDate(worldEnds)}</b></span></div>
+        ${worldTitleHoldersMarkup(world)}
         <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString("es-DO")}</b></p>` : ""}</div>
-        <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Los tres clasificados oficiales de cada país.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>Un campeón mundial</b><small>La clasificación final corona al mejor de la temporada.</small></p></li></ul>
-        ${worldTournament?.isParticipant ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>Estás en el Campeonato Mundial</b><small>Tu clasificación fue registrada automáticamente.</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático: clasifica primero en la etapa de tu país.</div>`}
+        <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Clasificados por país y los tres campeones vigentes.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>El podio cambia de dueño</b><small>Los tres mejores reciben los trofeos hasta la siguiente edición.</small></p></li></ul>
+        ${viewerHasWorldPlace ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>${world.viewer?.directlyQualified ? "Tu pase directo al Mundial está confirmado" : "Estás en el Campeonato Mundial"}</b><small>${world.viewer?.directlyQualified ? "Eres parte del podio vigente y no necesitas jugar la clasificatoria." : "Tu clasificación fue registrada automáticamente."}</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático al clasificar por tu país. Los tres campeones vigentes conservan pase directo.</div>`}
       </article>
     </div>
     <dialog class="tournament-entry-dialog" aria-labelledby="tournament-entry-title">
@@ -2152,7 +2187,7 @@ async function renderLegendGame(
           </div>
           <div class="board-shell board-shell--legend"><div id="legend-board"></div><div class="board-result-overlay" aria-hidden="true"></div></div>
           <div class="player-bar player-bar--own" data-player-bar="ivory">
-            <div class="player-identity"><span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(currentUser, "avatar avatar--player")}</span><span><span class="player-name-line"><i title="${escapeHtml(currentUser.countryCode)}">${flag(currentUser.countryCode)}</i><b>${escapeHtml(currentUser.name)} (Tú)</b></span><small>@${escapeHtml(currentUser.username)} · práctica</small></span></div>
+            <div class="player-identity"><span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(currentUser, "avatar avatar--player")}</span><span><span class="player-name-line"><i title="${escapeHtml(currentUser.countryCode)}">${flag(currentUser.countryCode)}</i><b>${escapeHtml(currentUser.name)} (Tú)</b>${worldTrophyMarkup(currentUser, "world-trophy--game")}</span><small>@${escapeHtml(currentUser.username)} · práctica</small></span></div>
             ${playerLiveData("ivory", currentRating?.rating ?? 1200, 20, formatClock(clocks.ivory))}
             <div class="turn-indicator"><i></i><span>Jugando</span></div>
             ${gameQuickActions(false)}
@@ -2403,9 +2438,9 @@ function spectatorCardMarkup(game: SpectatorGameSummary) {
   return `<article class="live-game-card">
     <header><span class="live-badge"><i></i> EN DIRECTO</span><span>${icon("eye")} <b>${game.spectatorCount}</b></span></header>
     <div class="live-players">
-      <div class="live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}">${avatarMarkup(ivory, "avatar avatar--live")}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><b>${escapeHtml(ivory.name)}</b><em>${ivory.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span></div>
+      <div class="live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}">${avatarMarkup(ivory, "avatar avatar--live")}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><span class="live-player-name"><b>${escapeHtml(ivory.name)}</b>${worldTrophyMarkup(ivory)}</span><em>${ivory.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span></div>
       <span class="live-versus">VS</span>
-      <div class="live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}">${avatarMarkup(mahogany, "avatar avatar--live")}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><b>${escapeHtml(mahogany.name)}</b><em>${mahogany.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span></div>
+      <div class="live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}">${avatarMarkup(mahogany, "avatar avatar--live")}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><span class="live-player-name"><b>${escapeHtml(mahogany.name)}</b>${worldTrophyMarkup(mahogany)}</span><em>${mahogany.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span></div>
     </div>
     <div class="live-game-facts"><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Turno</small><b>${escapeHtml(currentName)}</b></span></div>
     <button class="button button--primary" type="button" data-watch-game="${game.id}">${icon("eye")} Ver partida</button>
@@ -2468,7 +2503,7 @@ function spectatorPlayerBar(
   pieces: number,
 ) {
   return `<div class="player-bar spectator-player-bar" data-player-bar="${side}">
-    <div class="player-identity">${avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)}</b></span><small>@${escapeHtml(player.username)}</small></span></div>
+    <div class="player-identity">${avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span></div>
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
   </div>`;
@@ -3137,7 +3172,7 @@ function bindGameSettings(actions: {
 
 function playerBar(player: Game["players"][Side], side: Side, placement: string, pieces: number) {
   return `<div class="player-bar player-bar--${placement}" data-player-bar="${side}">
-    <div class="player-identity">${placement === "own" ? `<span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(player, "avatar avatar--player")}</span>` : avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)} ${placement === "own" ? "(Tú)" : ""}</b></span><small>@${escapeHtml(player.username)}</small></span></div>
+    <div class="player-identity">${placement === "own" ? `<span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(player, "avatar avatar--player")}</span>` : avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)} ${placement === "own" ? "(Tú)" : ""}</b>${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span></div>
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
     ${placement === "own" ? gameQuickActions(true) : ""}

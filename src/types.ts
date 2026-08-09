@@ -4,6 +4,12 @@ import type { LegendDifficultyKey } from "./game/legends";
 export type Side = "ivory" | "mahogany";
 export type GameStatus = "active" | "completed" | "cancelled";
 
+export interface WorldTitle {
+  placement: "gold" | "silver" | "bronze";
+  championshipYear: number | null;
+  awardedAt: string | null;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -13,6 +19,7 @@ export interface User {
   memberSince?: string | null;
   avatarUrl?: string | null;
   avatarVersion?: string | null;
+  worldTitle?: WorldTitle | null;
 }
 
 export interface Piece {
@@ -200,6 +207,14 @@ export interface QualifierTournamentResponse {
 export interface WorldChampionshipResponse {
   tournament: Tournament | null;
   nextStartsAt: string;
+  titleHolders: Array<User & {
+    rating: number;
+    worldTitle: WorldTitle;
+  }>;
+  viewer: {
+    directlyQualified: boolean;
+    worldTitle: WorldTitle | null;
+  };
 }
 
 export interface TournamentParticipant extends User {
