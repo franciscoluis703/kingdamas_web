@@ -2,14 +2,14 @@ const MOVE_SOUND_KEY = "kingdamas-move-sound";
 const BACKGROUND_SOUND_KEY = "kingdamas-background-sound";
 const BACKGROUND_VOLUME_KEY = "kingdamas-background-volume";
 const BACKGROUND_TRACK_URL = "/audio/cozy-puzzle-clear-mix.mp3";
-const MOVE_SOUND_URL = "/audio/step-wood-03.mp3";
-const CAPTURE_SOUND_URL = "/audio/gun-reload-click.mp3";
+const MOVE_SOUND_URL = "/audio/move.m4a";
+const CAPTURE_SOUND_URL = "/audio/capture.m4a";
 
 const DEFAULT_MOVE_SOUND = true;
 const DEFAULT_BACKGROUND_SOUND = true;
 const DEFAULT_BACKGROUND_VOLUME = 0.2;
-const MOVE_EFFECT_VOLUME = 0.6;
-const CAPTURE_EFFECT_VOLUME = 0.55;
+const MOVE_EFFECT_VOLUME = 0.1;
+const CAPTURE_EFFECT_VOLUME = 0.45;
 
 export const AUDIO_CREDITS = Object.freeze({
   title: "Cozy Puzzle (Clear Mix)",
@@ -19,12 +19,11 @@ export const AUDIO_CREDITS = Object.freeze({
   licenseUrl: "https://creativecommons.org/licenses/by/4.0/",
   effects: Object.freeze({
     movement: Object.freeze({
-      title: "12 Step wood 03",
-      creator: "leohpaz",
-      sourceUrl: "https://opengameart.org/users/leohpaz",
+      title: "Click sound 1",
+      creator: "Paulius Jurgelevičius (pauliuw)",
+      sourceUrl: "https://opengameart.org/content/click-sounds6",
       licenses: Object.freeze([
-        Object.freeze({ label: "CC BY 4.0", url: "https://creativecommons.org/licenses/by/4.0/" }),
-        Object.freeze({ label: "CC BY 3.0", url: "https://creativecommons.org/licenses/by/3.0/" }),
+        Object.freeze({ label: "CC0", url: "https://creativecommons.org/publicdomain/zero/1.0/" }),
       ]),
     }),
     capture: Object.freeze({

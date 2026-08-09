@@ -14,13 +14,11 @@ renombró para integrarlo en la aplicación Elo Damas.
 
 Efecto de movimiento
 --------------------
-Título: 12 Step wood 03
-Autor: leohpaz
-Perfil del autor: https://opengameart.org/users/leohpaz
-Licencias indicadas: Creative Commons Attribution 4.0 (CC BY 4.0) y
-Creative Commons Attribution 3.0 (CC BY 3.0)
-Licencia CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
-Licencia CC BY 3.0: https://creativecommons.org/licenses/by/3.0/
+Título: Click sound 1
+Autor: Paulius Jurgelevičius (pauliuw)
+Fuente: https://opengameart.org/content/click-sounds6
+Licencia: Creative Commons Zero (CC0)
+Licencia completa: https://creativecommons.org/publicdomain/zero/1.0/
 
 Efecto de captura
 -----------------
