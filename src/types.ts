@@ -317,7 +317,12 @@ export interface PlayerStatisticsResponse {
     countryPosition: number | null;
     winRate: number;
   }>;
-  recentGames: PlayerMatchHistoryEntry[];
+}
+
+export interface PlayerMatchHistoryResponse {
+  matches: PlayerMatchHistoryEntry[];
+  nextOffset: number;
+  hasMore: boolean;
 }
 
 export interface MatchmakingWaiting {

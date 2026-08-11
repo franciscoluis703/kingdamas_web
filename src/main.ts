@@ -1793,7 +1793,10 @@ function playerMatchEndLabel(match: PlayerMatchHistoryEntry) {
     : "Derrota decidida en el tablero";
 }
 
-function playerMatchHistoryMarkup(matches: PlayerMatchHistoryEntry[]) {
+function playerMatchHistoryMarkup(
+  matches: PlayerMatchHistoryEntry[],
+  hasMore: boolean,
+) {
   const history = matches.length
     ? matches.map((match) => {
         const resultLabel = match.result === "win"
@@ -1831,9 +1834,18 @@ function playerMatchHistoryMarkup(matches: PlayerMatchHistoryEntry[]) {
       }).join("")
     : `<div class="profile-match-history-empty"><span>♟</span><b>Aún no hay enfrentamientos registrados</b><p>Los resultados aparecerán aquí después de completar una partida clasificada.</p></div>`;
 
+  return `<div class="profile-match-history-list">${history}</div>
+    ${hasMore ? `<div class="profile-match-history-actions"><button class="button button--quiet" type="button" data-view-more-history>Ver más</button><small>Se cargarán 10 enfrentamientos adicionales.</small></div>` : ""}`;
+}
+
+function playerMatchHistorySectionMarkup() {
   return `<section class="player-profile-history" aria-labelledby="player-profile-history-title">
-    <header><div><span class="section-kicker">RESULTADOS RECIENTES</span><h2 id="player-profile-history-title">Historial de enfrentamientos</h2><p>Resultados, rivales y forma de finalización. Las jugadas no se muestran.</p></div><b>${matches.length} ${matches.length === 1 ? "partida" : "partidas"}</b></header>
-    <div class="profile-match-history-list">${history}</div>
+    <header>
+      <div><span class="section-kicker">RESULTADOS RECIENTES</span><h2 id="player-profile-history-title">Historial de enfrentamientos</h2><p>Se carga solo cuando lo solicitas y muestra 10 partidas a la vez.</p></div>
+      <button class="button button--quiet" type="button" data-view-player-history>Ver historial</button>
+      <b data-player-history-count hidden></b>
+    </header>
+    <div data-player-history-results hidden aria-live="polite"></div>
   </section>`;
 }
 
@@ -1875,7 +1887,7 @@ function playerProfilePageMarkup(
       <div class="player-profile-rating"><span><small>Elo Damas</small><b>${rating.toLocaleString("es-DO")}</b></span><span><small>Mejor Elo</small><b>${(mode?.peakRating ?? rating).toLocaleString("es-DO")}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
       <div class="player-profile-record"><span><b>${response.summary.totalGames}</b><small>Partidas</small></span><span><b>${response.summary.wins}</b><small>Victorias</small></span><span><b>${response.summary.losses}</b><small>Derrotas</small></span><span><b>${response.summary.draws}</b><small>Tablas</small></span><span><b>${response.summary.winRate}%</b><small>Rendimiento</small></span></div>
       <div class="player-profile-details"><span><small>Miembro desde</small><b>${escapeHtml(joined)}</b></span><span><small>Últimos 30 días</small><b>${response.summary.gamesLast30Days} partidas</b></span><span><small>Promedio por partida</small><b>${response.summary.averageMoves || 0} movimientos</b></span><span><small>Duración promedio</small><b>${formatDuration(response.summary.averageDuration || 0)}</b></span></div>
-      ${playerMatchHistoryMarkup(response.recentGames)}
+      ${playerMatchHistorySectionMarkup()}
     </section>
     <dialog class="profile-following-dialog" aria-labelledby="profile-following-title">
       <header><div><span class="section-kicker">CÍRCULO DE JUGADORES</span><h2 id="profile-following-title">Personas que sigue @${escapeHtml(profile.username)}</h2><p><b>${profile.followingCount}</b> ${profile.followingCount === 1 ? "perfil" : "perfiles"}</p></div><button type="button" data-close-profile-following aria-label="Cerrar">×</button></header>
@@ -1905,6 +1917,48 @@ async function renderPlayerProfile(username: string) {
     root.querySelector<HTMLButtonElement>("[data-challenge-profile]")?.addEventListener("click", () => {
       openProfileChallenge(response.profile);
     });
+    const historyButton = root.querySelector<HTMLButtonElement>("[data-view-player-history]");
+    const historyCount = root.querySelector<HTMLElement>("[data-player-history-count]");
+    const historyResults = root.querySelector<HTMLElement>("[data-player-history-results]");
+    const loadedMatches: PlayerMatchHistoryEntry[] = [];
+    let nextHistoryOffset = 0;
+    let historyLoading = false;
+    const loadPlayerHistory = async () => {
+      if (historyLoading || !historyButton || !historyResults) return;
+      historyLoading = true;
+      const firstPage = loadedMatches.length === 0;
+      const trigger = firstPage
+        ? historyButton
+        : historyResults.querySelector<HTMLButtonElement>("[data-view-more-history]");
+      if (trigger) {
+        trigger.disabled = true;
+        trigger.textContent = "Cargando…";
+      }
+      try {
+        const page = await api.playerHistory(username, nextHistoryOffset);
+        if (route() !== `/perfil/${username}`) return;
+        loadedMatches.push(...page.matches);
+        nextHistoryOffset = page.nextOffset;
+        historyResults.innerHTML = playerMatchHistoryMarkup(loadedMatches, page.hasMore);
+        historyResults.hidden = false;
+        historyButton.hidden = true;
+        if (historyCount) {
+          historyCount.textContent = `${loadedMatches.length} ${loadedMatches.length === 1 ? "partida mostrada" : "partidas mostradas"}`;
+          historyCount.hidden = false;
+        }
+        historyResults.querySelector<HTMLButtonElement>("[data-view-more-history]")
+          ?.addEventListener("click", () => void loadPlayerHistory());
+      } catch (error) {
+        if (trigger) {
+          trigger.disabled = false;
+          trigger.textContent = firstPage ? "Ver historial" : "Ver más";
+        }
+        toast(errorMessage(error), "error");
+      } finally {
+        historyLoading = false;
+      }
+    };
+    historyButton?.addEventListener("click", () => void loadPlayerHistory());
     root.querySelectorAll<HTMLButtonElement>("[data-follow-profile], [data-unfollow-profile]").forEach((button) => {
       button.addEventListener("click", async () => {
         const unfollowing = button.hasAttribute("data-unfollow-profile");

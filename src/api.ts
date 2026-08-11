@@ -9,6 +9,7 @@ import type {
   LinkInvitation,
   MatchmakingResult,
   MachineProgress,
+  PlayerMatchHistoryResponse,
   PlayerStatisticsResponse,
   QualifierBracketResponse,
   Rating,
@@ -201,6 +202,10 @@ export const api = {
   playerStatistics: (username: string) =>
     request<PlayerStatisticsResponse>(
       `/ratings/players/${encodeURIComponent(username)}/statistics`,
+    ),
+  playerHistory: (username: string, offset = 0) =>
+    request<PlayerMatchHistoryResponse>(
+      `/ratings/players/${encodeURIComponent(username)}/history?offset=${offset}`,
     ),
   myRatings: () =>
     request<{ system: string; initialRating: number; ratings: Rating[] }>(
