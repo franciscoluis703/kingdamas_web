@@ -4,6 +4,7 @@ import { api, ApiError } from "./api";
 import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./config";
 import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
+import { decorativeBoardMarkup } from "./game/decorativeBoard";
 import { CHALLENGE_EMOJIS, MAX_GAME_CHAT_LENGTH } from "./game/chat";
 import { applyMove, countPieces, createInitialBoard, getWinner, moveNotation, opponentOf } from "./game/engine";
 import { spectatorClockValue } from "./game/spectators";
@@ -25,6 +26,15 @@ import {
   startBackgroundSound,
   stopBackgroundSound,
 } from "./game/sound";
+import {
+  PIECE_COLOR_OPTIONS,
+  pieceColorPreferences,
+  pieceColorsFor,
+  setPieceColorPreference,
+  type PieceColor,
+  type PieceColorPreferences,
+  type PieceColorRole,
+} from "./game/pieceColorPreferences";
 import type {
   BoardState,
   ChatMessage,
@@ -191,7 +201,7 @@ function confirmAction({
     dialog.setAttribute("aria-describedby", "kingdamas-confirm-message");
     dialog.innerHTML = `
       <header class="kingdamas-confirm-header">
-        <span class="kingdamas-confirm-brand"><img src="/favicon-64.png?v=green-1" width="36" height="36" alt="" /><span><small>KINGDAMAS.COM</small><b>Decisión de partida</b></span></span>
+        <span class="kingdamas-confirm-brand"><img src="/favicon-64.png?v=piece-1" width="36" height="36" alt="" /><span><small>KINGDAMAS.COM</small><b>Decisión de partida</b></span></span>
         <button type="button" data-confirm-close aria-label="Cerrar diálogo">×</button>
       </header>
       <div class="kingdamas-confirm-content">
@@ -313,7 +323,7 @@ function bindLegalConsent() {
 }
 
 function brandMarkMarkup() {
-  return `<span class="brand-mark"><img src="/favicon-64.png?v=green-1" width="64" height="64" alt="" /></span>`;
+  return `<span class="brand-mark"><img src="/favicon-64.png?v=piece-1" width="64" height="64" alt="" /></span>`;
 }
 
 function logoMarkup() {
@@ -657,12 +667,12 @@ function renderLanding() {
             <div class="hero-facts">
               <span><b>10×10</b><small>Modalidad única</small></span>
               <span><b>10 · 30 · 60</b><small>Minutos por jugador</small></span>
-              <span><b>En vivo</b><small>Con Socket.IO</small></span>
+              <span><b>En vivo</b><small>Actualización instantánea</small></span>
             </div>
           </div>
           <div class="hero-board-wrap" aria-hidden="true">
             <div class="hero-glow"></div>
-            <div class="mini-board">${decorativeBoard()}</div>
+            <div class="mini-board">${decorativeBoardMarkup()}</div>
             <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>${(1428).toLocaleString(localeCode())} <i>+18</i></b></div>
             <div class="floating-card floating-card--clock"><span>${icon("clock")}</span><b>10:00</b><small>Partida rápida</small></div>
           </div>
@@ -772,17 +782,6 @@ function renderPasswordReset(token: string) {
       }
     }
   });
-}
-
-function decorativeBoard() {
-  return Array.from({ length: 100 }, (_, index) => {
-    const row = Math.floor(index / 10);
-    const col = index % 10;
-    const dark = (row + col) % 2 === 1;
-    const ivory = dark && row < 4;
-    const mahogany = dark && row > 5;
-    return `<span class="mini-square ${dark ? "is-dark" : ""}">${ivory || mahogany ? `<i class="mini-piece ${ivory ? "is-ivory" : "is-mahogany"}"></i>` : ""}</span>`;
-  }).join("");
 }
 
 function authDialogMarkup() {
@@ -1110,7 +1109,7 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
         `}
       </section>
       <aside class="panel donation-purpose">
-        <img src="/brand/icon-192.png?v=green-1" alt="" />
+        <img src="/brand/icon-192.png?v=piece-1" alt="" />
         <span class="section-kicker">¿A DÓNDE VA TU APORTE?</span>
         <h2>Una mejor mesa para todos</h2>
         <ul>
@@ -1267,7 +1266,7 @@ function isLegalPath(path: string): path is LegalPath {
 
 function renderInformationHub() {
   const descriptions: Record<LegalPath, string> = {
-    "/acerca-de": "Conoce el propósito, los principios y la tecnología de King Damas.",
+    "/acerca-de": "Conoce el propósito y los principios de King Damas.",
     "/contacto": "Encuentra ayuda para tu cuenta, privacidad o convivencia.",
     "/politica-de-cookies": "Consulta qué se guarda en tu navegador y para qué se utiliza.",
     "/terminos-y-condiciones": "Revisa las reglas de uso, juego limpio y participación.",
@@ -1304,8 +1303,7 @@ function termsConsentMarkup() {
 function legalAboutMarkup() {
   return `<div class="legal-lead"><span>${brandMarkMarkup()}</span><div><small>NUESTRA RAZÓN DE JUGAR</small><h2>Damas internacionales para una comunidad que piensa en grande.</h2><p>King Damas es una plataforma dedicada exclusivamente al tablero 10×10, creada para reunir competencia, aprendizaje y comunidad en una experiencia clara y accesible.</p></div></div>
     <section><h2>Qué encontrarás aquí</h2><div class="legal-feature-grid"><span><b>Competición justa</b><small>Partidas clasificadas con Elo Damas y relojes de 10, 30 o 60 minutos.</small></span><span><b>Aprendizaje</b><small>Un Camino de Leyendas con dificultad progresiva para entrenar sin afectar tu Elo.</small></span><span><b>Comunidad</b><small>Amigos, mensajes, torneos y partidas en vivo para compartir la afición.</small></span></div></section>
-    <section><h2>Nuestros principios</h2><p>Buscamos una mesa respetuosa, reglas transparentes, resultados trazables y mejoras continuas. El juego limpio y el trato digno entre jugadores están por encima de cualquier clasificación.</p></section>
-    <section><h2>Tecnología</h2><p>La plataforma utiliza TypeScript en la experiencia web y un backend en Node.js con Express, Socket.IO, MySQL y Redis para mantener partidas y comunicaciones en tiempo real.</p></section>`;
+    <section><h2>Nuestros principios</h2><p>Buscamos una mesa respetuosa, reglas transparentes, resultados trazables y mejoras continuas. El juego limpio y el trato digno entre jugadores están por encima de cualquier clasificación.</p></section>`;
 }
 
 function legalContactMarkup() {
@@ -1316,9 +1314,9 @@ function legalContactMarkup() {
 }
 
 function legalCookiesMarkup() {
-  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea tecnología esencial para mantener la sesión y preferencias locales para personalizar el juego.</p></aside>
-    <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se envía de forma segura al backend.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>La biblioteca de PayPal se carga únicamente cuando visitas la sección de donaciones y dicha empresa puede utilizar sus propias tecnologías conforme a sus políticas. Los audios, el tablero y los recursos visuales se sirven desde King Damas.</p></section>
+  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego.</p></aside>
+    <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
+    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones y puede gestionar datos conforme a sus propias políticas. Los audios, el tablero y los recursos visuales se proporcionan directamente desde King Damas.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -1339,7 +1337,7 @@ function legalPrivacyMarkup() {
     <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico.</p></section>
     <section><h2>2. Para qué los utilizamos</h2><p>Los usamos para autenticarte, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar funciones comunitarias, gestionar torneos y pagos, atender solicitudes, prevenir abuso y mantener la seguridad y estabilidad del servicio.</p></section>
     <section><h2>3. Información visible</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran únicamente a sus participantes, salvo revisión necesaria por seguridad o cumplimiento.</p></section>
-    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores de alojamiento, base de datos, caché, correo y pagos para prestar el servicio. Algunos pueden procesar información fuera de la República Dominicana. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida.</p></section>
+    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos y procesar pagos. Algunos pueden procesar información fuera de la República Dominicana. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida.</p></section>
     <section><h2>5. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para seguridad, resolución de disputas y obligaciones legales. Aplicamos controles técnicos y organizativos, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
     <section><h2>6. Tus derechos</h2><p>Puedes solicitar acceso, corrección, actualización o eliminación de tus datos, sujeto a las excepciones legales y registros que debamos conservar. Envía la solicitud desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
     <section><h2>7. Marco y actualizaciones</h2><p>Esta política toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Informaremos cambios relevantes y solicitaremos una nueva confirmación cuando corresponda.</p></section>`;
@@ -1347,7 +1345,7 @@ function legalPrivacyMarkup() {
 
 function legalPageMarkup(path: LegalPath) {
   const pages: Record<LegalPath, { title: string; eyebrow: string; description: string; body: () => string }> = {
-    "/acerca-de": { title: "Acerca de", eyebrow: "CONOCE KING DAMAS", description: "El propósito, la tecnología y los principios detrás de cada mesa.", body: legalAboutMarkup },
+    "/acerca-de": { title: "Acerca de", eyebrow: "CONOCE KING DAMAS", description: "El propósito y los principios detrás de cada mesa.", body: legalAboutMarkup },
     "/contacto": { title: "Contacto", eyebrow: "ESTAMOS PARA AYUDAR", description: "Un canal claro para soporte, privacidad y asuntos de la comunidad.", body: legalContactMarkup },
     "/politica-de-cookies": { title: "Política de cookies", eyebrow: "CONTROL Y TRANSPARENCIA", description: "Qué guarda King Damas en tu navegador y para qué se utiliza.", body: legalCookiesMarkup },
     "/terminos-y-condiciones": { title: "Términos y condiciones", eyebrow: "REGLAS DE LA PLATAFORMA", description: "Las condiciones para usar King Damas y compartir una mesa justa.", body: legalTermsMarkup },
@@ -3014,7 +3012,7 @@ async function renderSharedInvitation(token: string) {
     const card = `
       <section class="shared-invitation-page">
         <div class="shared-invitation-card">
-          <span class="invite-seal invite-seal--large invite-brand-mark"><img src="/brand/icon-192.png?v=green-1" alt="" /></span>
+          <span class="invite-seal invite-seal--large invite-brand-mark"><img src="/brand/icon-192.png?v=piece-1" alt="" /></span>
           <span class="section-kicker">INVITACIÓN PRIVADA</span>
           <h1>${ownInvitation ? "Este es tu desafío" : `@${escapeHtml(invitation.sender.username)} te espera`}</h1>
           <p>${ownInvitation ? "Comparte el enlace original y espera a que tu amigo lo acepte." : "¿Puedes arrebatarle la corona? Acepta el desafío y demuestra tu nivel en el tablero."}</p>
@@ -3425,10 +3423,13 @@ async function renderLegendGame(
   board = new CmCheckersboard(boardElement, {
     orientation: humanSide,
     playerSide: humanSide,
-    pieceColors: { ivory: "blanca", mahogany: "dorado" },
+    pieceColors: pieceColorsFor(humanSide),
     onMove: (move) => playMove(move, humanSide),
   });
   bindGameSettings({
+    onPieceColorsChange: (preferences) => {
+      board?.setPieceColors(pieceColorsFor(humanSide, preferences));
+    },
     onResign: async () => {
       const accepted = await confirmAction({
         title: `¿Rendirse ante ${legend.name}?`,
@@ -3570,7 +3571,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
   board = new CmCheckersboard(boardElement, {
     orientation: "ivory",
     playerSide: "ivory",
-    pieceColors: game.pieceColors,
+    pieceColors: pieceColorsFor("ivory"),
     onMove: () => {},
   });
 
@@ -3779,7 +3780,7 @@ function mountGame(initialGame: Game) {
   board = new CmCheckersboard(boardElement, {
     orientation: ownSide,
     playerSide: ownSide,
-    pieceColors: game.pieceColors,
+    pieceColors: pieceColorsFor(ownSide),
     onMove: async (move) => {
       if (submittingMove) return;
       submittingMove = true;
@@ -4035,6 +4036,9 @@ function mountGame(initialGame: Game) {
   bindGameSettings({
     onChat: openChat,
     onDraw: offerDraw,
+    onPieceColorsChange: (preferences) => {
+      board?.setPieceColors(pieceColorsFor(ownSide, preferences));
+    },
     onResign: async () => {
       await finishByPlayer({
         title: "¿Confirmas la rendición?",
@@ -4186,9 +4190,18 @@ function playerLiveData(side: Side, rating: number, pieces: number, time = "--:-
   return `<span class="player-numbers" aria-label="${rating} de Elo Damas, ${pieces} fichas y ${time} de tiempo"><b>${rating}</b><i>–</i><b data-piece-count="${side}">${pieces}</b><i>–</i><time class="game-clock" data-clock="${side}">${time}</time></span>`;
 }
 
+function pieceColorOptionsMarkup(selected: PieceColor) {
+  return PIECE_COLOR_OPTIONS.map((option) => (
+    `<option value="${option.key}" ${option.key === selected ? "selected" : ""}>${option.label}</option>`
+  )).join("");
+}
+
 function gameQuickActions(chatAvailable = true) {
   const sounds = soundPreferences();
   const backgroundVolume = Math.round(sounds.backgroundVolume * 100);
+  const pieceColors = pieceColorPreferences();
+  const ownColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.own)!;
+  const opponentColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.opponent)!;
   return `<div class="player-quick-actions">
     <button class="quick-action" type="button" data-quick-chat aria-label="Abrir chat" ${chatAvailable ? "" : "disabled"}>${icon("chat")}</button>
     <button class="quick-action" type="button" data-settings-toggle aria-label="Abrir configuración" aria-expanded="false">${icon("settings")}</button>
@@ -4196,6 +4209,14 @@ function gameQuickActions(chatAvailable = true) {
       <div class="settings-menu-title"><span>${icon("settings")}</span><b>Configuración</b><button type="button" data-settings-close aria-label="Cerrar configuración">×</button></div>
       <button type="button" data-settings-draw ${chatAvailable ? "" : "disabled"}><span>½</span><b>Tablas</b></button>
       <button type="button" data-settings-resign class="is-danger"><span>⚑</span><b>Rendirse</b></button>
+      <div class="settings-color-section">
+        <span class="settings-color-title"><i>●</i><b>Colores de fichas</b></span>
+        <div class="settings-color-fields">
+          <label><span><i data-piece-color-swatch="own" style="--piece-swatch:${ownColor.value}"></i>Tus fichas</span><select data-piece-color="own" aria-label="Color de tus fichas">${pieceColorOptionsMarkup(pieceColors.own)}</select></label>
+          <label><span><i data-piece-color-swatch="opponent" style="--piece-swatch:${opponentColor.value}"></i>Rival</span><select data-piece-color="opponent" aria-label="Color de las fichas del rival">${pieceColorOptionsMarkup(pieceColors.opponent)}</select></label>
+        </div>
+        <small>Los dos lados siempre usan colores diferentes.</small>
+      </div>
       <div class="settings-toggle-row"><span>${icon("volume")}<b>Interfaz y jugadas</b></span><button type="button" role="switch" aria-label="Sonidos de interfaz, movimientos y capturas" aria-checked="${sounds.moves}" class="mini-switch ${sounds.moves ? "is-on" : ""}" data-move-sound><i></i></button></div>
       <div class="settings-toggle-row"><span><i class="settings-symbol">♫</i><b>Música de fondo</b></span><button type="button" role="switch" aria-label="Música de fondo" aria-checked="${sounds.background}" class="mini-switch ${sounds.background ? "is-on" : ""}" data-background-sound><i></i></button></div>
       <label class="settings-volume-row"><span><i>♪</i><b>Volumen</b></span><span class="volume-slider"><input type="range" min="0" max="100" step="5" value="${backgroundVolume}" aria-label="Volumen de la música de fondo" data-background-volume style="--volume-progress:${backgroundVolume}%" /><output data-background-volume-output>${backgroundVolume}%</output></span></label>
@@ -4207,6 +4228,7 @@ function gameQuickActions(chatAvailable = true) {
 function bindGameSettings(actions: {
   onChat?: () => void;
   onDraw?: () => void | Promise<void>;
+  onPieceColorsChange?: (preferences: PieceColorPreferences) => void;
   onResign: () => void | Promise<void>;
   onNewGame: () => void | Promise<void>;
 }) {
@@ -4246,6 +4268,23 @@ function bindGameSettings(actions: {
   root.querySelector("[data-settings-new]")?.addEventListener("click", () => {
     closeMenu();
     void actions.onNewGame();
+  });
+  const syncPieceColorControls = (preferences: PieceColorPreferences) => {
+    root.querySelectorAll<HTMLSelectElement>("[data-piece-color]").forEach((select) => {
+      const role = select.dataset.pieceColor as PieceColorRole;
+      select.value = preferences[role];
+      const option = PIECE_COLOR_OPTIONS.find((item) => item.key === preferences[role]);
+      root.querySelector<HTMLElement>(`[data-piece-color-swatch="${role}"]`)
+        ?.style.setProperty("--piece-swatch", option?.value || "transparent");
+    });
+  };
+  root.querySelectorAll<HTMLSelectElement>("[data-piece-color]").forEach((select) => {
+    select.addEventListener("change", () => {
+      const role = select.dataset.pieceColor as PieceColorRole;
+      const preferences = setPieceColorPreference(role, select.value as PieceColor);
+      syncPieceColorControls(preferences);
+      actions.onPieceColorsChange?.(preferences);
+    });
   });
   const updateSwitch = (button: HTMLButtonElement, enabled: boolean) => {
     button.classList.toggle("is-on", enabled);
@@ -4315,7 +4354,7 @@ async function connectRealtime() {
     void checkIncomingChallenges();
   });
   socket.on("connect_error", (error) => {
-    console.warn("Tiempo real no disponible; se usará sincronización HTTP.", error.message);
+    console.warn("La conexión en vivo no está disponible; se usará una actualización alternativa.", error.message);
   });
 }
 

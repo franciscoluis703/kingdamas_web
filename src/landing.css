@@ -72,8 +72,8 @@ a { color: inherit; text-decoration: none; }
 .hero-facts small { margin-top: 4px; color: #72877d; }
 .hero-board-wrap { position: relative; display: grid; place-items: center; perspective: 900px; }
 .hero-glow { position: absolute; width: 82%; aspect-ratio: 1; border-radius: 50%; background: rgba(42,190,128,.12); filter: blur(65px); }
-.mini-board { width: min(500px, 44vw); aspect-ratio: 1; display: grid; grid-template-columns: repeat(10,1fr); overflow: hidden; border: 10px solid #183329; border-radius: 14px; transform: rotateX(7deg) rotateZ(-2deg); box-shadow: 0 45px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.1); }
-.mini-square { display: grid; place-items: center; background: #dacba9; }
+.mini-board { width: min(500px, 44vw); aspect-ratio: 1; display: grid; grid-template-columns: repeat(10,1fr); grid-template-rows: repeat(10,1fr); overflow: hidden; border: 10px solid #183329; border-radius: 14px; transform: rotateX(7deg) rotateZ(-2deg); box-shadow: 0 45px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(255,255,255,.1); }
+.mini-square { min-width: 0; min-height: 0; display: grid; place-items: center; background: #dacba9; }
 .mini-square.is-dark { background: #245b45; }
 .mini-piece { position: relative; width: 72%; aspect-ratio: 1; border-radius: 50%; box-shadow: inset 0 -5px 0 rgba(0,0,0,.2), 0 3px 5px rgba(0,0,0,.35); }
 .mini-piece::after { content: ""; position: absolute; inset: 17%; border: 2px solid rgba(255,255,255,.16); border-radius: 50%; }

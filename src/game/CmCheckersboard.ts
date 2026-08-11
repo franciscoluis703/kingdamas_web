@@ -49,6 +49,11 @@ export class CmCheckersboard {
     this.render();
   }
 
+  setPieceColors(pieceColors: Record<Side, string>) {
+    this.options.pieceColors = pieceColors;
+    this.render();
+  }
+
   destroy() {
     this.element.removeEventListener(this.pointerEvent, this.handlePointer);
     this.element.removeEventListener("keydown", this.handleKeyboard);
@@ -202,7 +207,7 @@ export class CmCheckersboard {
       rosado: "#d8809a",
       dorado: "#d5a633",
     };
-    const fallback = side === "ivory" ? colors.negra! : colors.verde!;
+    const fallback = side === "ivory" ? colors.blanca! : colors.negra!;
     const value = this.options.pieceColors[side];
     if (/^#[0-9a-f]{6}$/i.test(value)) return value;
     return colors[value] ?? fallback;

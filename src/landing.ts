@@ -2,11 +2,12 @@ import { api, ApiError } from "./api";
 import type { User } from "./types";
 import { icon } from "./ui";
 import { languageSelectorMarkup, localeCode } from "./i18n";
+import { decorativeBoardMarkup } from "./game/decorativeBoard";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
 function brandMarkMarkup() {
-  return `<span class="brand-mark"><img src="/favicon-64.png?v=green-1" width="64" height="64" alt="" /></span>`;
+  return `<span class="brand-mark"><img src="/favicon-64.png?v=piece-1" width="64" height="64" alt="" /></span>`;
 }
 
 function logoMarkup() {
@@ -24,17 +25,6 @@ function publicHeader() {
         <button class="button button--primary button--small" type="button" data-open-auth="register">Crear cuenta</button>
       </nav>
     </header>`;
-}
-
-function decorativeBoard() {
-  return Array.from({ length: 100 }, (_, index) => {
-    const row = Math.floor(index / 10);
-    const col = index % 10;
-    const dark = (row + col) % 2 === 1;
-    const ivory = dark && row < 4;
-    const mahogany = dark && row > 5;
-    return `<span class="mini-square ${dark ? "is-dark" : ""}">${ivory || mahogany ? `<i class="mini-piece ${ivory ? "is-ivory" : "is-mahogany"}"></i>` : ""}</span>`;
-  }).join("");
 }
 
 function authDialogMarkup() {
@@ -190,12 +180,12 @@ export function renderPublicLanding(onAuthenticated: (user: User) => Promise<voi
             <div class="hero-facts">
               <span><b>10×10</b><small>Modalidad única</small></span>
               <span><b>10 · 30 · 60</b><small>Minutos por jugador</small></span>
-              <span><b>En vivo</b><small>Con Socket.IO</small></span>
+              <span><b>En vivo</b><small>Actualización instantánea</small></span>
             </div>
           </div>
           <div class="hero-board-wrap" aria-hidden="true">
             <div class="hero-glow"></div>
-            <div class="mini-board">${decorativeBoard()}</div>
+            <div class="mini-board">${decorativeBoardMarkup()}</div>
             <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>${(1428).toLocaleString(localeCode())} <i>+18</i></b></div>
             <div class="floating-card floating-card--clock"><span>${icon("clock")}</span><b>10:00</b><small>Partida rápida</small></div>
           </div>
