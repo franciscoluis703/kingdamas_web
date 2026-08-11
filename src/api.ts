@@ -28,6 +28,28 @@ export class ApiError extends Error {
   }
 }
 
+export interface AppStoreConfig {
+  enabled: boolean;
+  appAccountToken: string | null;
+  products: {
+    tournamentEntry: {
+      productId: string;
+      qualifierYear: number;
+    };
+    support: Array<{
+      productId: string;
+      tier: "small" | "medium" | "large" | "champion";
+    }>;
+  };
+}
+
+export interface AppStoreConfirmation {
+  status: "COMPLETED";
+  purpose: "tournament_entry" | "support";
+  transactionId: string;
+  tournamentId: string | null;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("Content-Type")) {
@@ -134,6 +156,12 @@ export const api = {
       minAmount: number;
       maxAmount: number;
     }>("/donations/config"),
+  appStoreConfig: () => request<AppStoreConfig>("/app-store/config"),
+  confirmAppStoreTransaction: (signedTransactionInfo: string) =>
+    request<AppStoreConfirmation>("/app-store/transactions/confirm", {
+      method: "POST",
+      body: json({ signedTransactionInfo }),
+    }),
   createDonationOrder: (amount: number) =>
     request<{ id: string }>("/donations/create-order", {
       method: "POST",

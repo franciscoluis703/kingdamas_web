@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io-client";
 import "./styles.css";
-import { api, ApiError } from "./api";
+import { api, ApiError, type AppStoreConfig } from "./api";
 import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./config";
 import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
@@ -63,6 +63,16 @@ import type {
 import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
 import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
 import {
+  finishNativeStoreTransaction,
+  isIOSNativeApp,
+  listenForNativeStoreTransactions,
+  nativeStoreProducts,
+  purchaseNativeStoreProduct,
+  unfinishedNativeStoreTransactions,
+  type NativeStoreProduct,
+  type NativeStoreTransaction,
+} from "./nativeStore";
+import {
   LANGUAGE_CHANGE_EVENT,
   currentLanguage,
   languageSelectorMarkup,
@@ -116,6 +126,9 @@ let incomingChallengeId: string | null = null;
 let incomingChallengeCheckRunning = false;
 let languageListenerBound = false;
 let languageSaveQueue: Promise<void> = Promise.resolve();
+let nativeStoreRecoveryUserId: string | null = null;
+let nativeStoreListenerBound = false;
+const nativeStoreConfirmations = new Map<string, Promise<void>>();
 
 const LEGAL_CONSENT_VERSION = "2026-08-09";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -422,7 +435,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
         <button class="nav-item sidebar-information-link ${active === "legal" ? "is-active" : ""}" type="button" data-route="/informacion"><i>i</i><span>Información</span></button>
         <button class="sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="/donar">
           <span class="sidebar-donate-icon">${icon("heart")}</span>
-          <span><small>APOYA EL PROYECTO</small><b>Donar</b></span>
+          <span><small>APOYA EL PROYECTO</small><b>${isIOSNativeApp() ? "Apoyar" : "Donar"}</b></span>
           <i aria-hidden="true">→</i>
         </button>
         <button class="sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos"><span class="sidebar-credits-icon">©</span><span><b>Créditos</b><small>Autores y licencias</small></span><i aria-hidden="true">→</i></button>
@@ -915,7 +928,10 @@ function bindAuthDialog() {
         currentUser = response.user;
         setSessionHint(true);
         dialog.close();
-        await connectRealtime();
+        await Promise.all([
+          connectRealtime(),
+          initializeNativeStoreForUser(response.user),
+        ]);
         if (isPasswordResetPath()) clearPasswordResetUrl();
         navigate("/inicio");
         toast(`Bienvenido, ${currentUser.name}.`);
@@ -1077,6 +1093,53 @@ function bindPlayPage() {
   root.querySelector("[data-challenge-legend]")?.addEventListener("click", () => navigate(`/leyendas/${selectedTime}`));
 }
 
+async function confirmAndFinishNativeTransaction(
+  transaction: NativeStoreTransaction,
+) {
+  const pending = nativeStoreConfirmations.get(transaction.transactionId);
+  if (pending) return pending;
+  const confirmation = (async () => {
+    const result = await api.confirmAppStoreTransaction(
+      transaction.signedTransactionInfo,
+    );
+    if (result.status !== "COMPLETED") {
+      throw new Error("App Store no pudo confirmar la compra.");
+    }
+    await finishNativeStoreTransaction(transaction.transactionId);
+  })().finally(() => {
+    nativeStoreConfirmations.delete(transaction.transactionId);
+  });
+  nativeStoreConfirmations.set(transaction.transactionId, confirmation);
+  return confirmation;
+}
+
+async function initializeNativeStoreForUser(user: User) {
+  if (!isIOSNativeApp()) return;
+  if (!nativeStoreListenerBound) {
+    nativeStoreListenerBound = true;
+    await listenForNativeStoreTransactions((transaction) => {
+      void confirmAndFinishNativeTransaction(transaction).catch((error) => {
+        console.warn("La compra pendiente de App Store todavía no pudo confirmarse.", error);
+      });
+    }).catch((error) => {
+      nativeStoreListenerBound = false;
+      console.warn("No se pudo escuchar las compras de App Store.", error);
+    });
+  }
+  if (nativeStoreRecoveryUserId === user.id) return;
+  nativeStoreRecoveryUserId = user.id;
+  try {
+    const config = await api.appStoreConfig();
+    if (!config.enabled) return;
+    const transactions = await unfinishedNativeStoreTransactions();
+    for (const transaction of transactions) {
+      await confirmAndFinishNativeTransaction(transaction);
+    }
+  } catch (error) {
+    console.warn("La recuperación de compras de App Store queda pendiente.", error);
+  }
+}
+
 async function loadPayPalSdk(clientId: string, currency: string) {
   if (window.paypal) return window.paypal;
   if (paypalSdkPromise) return paypalSdkPromise;
@@ -1141,10 +1204,116 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
     </div>`;
 }
 
+function iosSupportMarkup(
+  config: AppStoreConfig,
+  products: NativeStoreProduct[],
+) {
+  const productById = new Map(products.map((product) => [product.id, product]));
+  const available = config.enabled && Boolean(config.appAccountToken) && products.length > 0;
+  return `
+    <section class="page-heading donation-heading">
+      <div><span class="eyebrow"><i></i>APOYA KING DAMAS</span><h1>Ayuda a mantener<br>las mesas abiertas</h1><p>Tu aporte voluntario sostiene la continuidad y las mejoras de King Damas.</p></div>
+      <span class="donation-heart">${icon("heart")}</span>
+    </section>
+    <div class="donation-layout">
+      <section class="panel donation-card">
+        <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige una opción de apoyo</h2></div><span class="donation-currency">APP STORE</span></div>
+        ${available ? `
+          <div class="donation-amounts ios-support-options">
+            ${config.products.support.map(({ productId }) => {
+              const product = productById.get(productId);
+              if (!product) return "";
+              return `<button type="button" class="donation-amount ios-support-product" data-ios-support-product="${escapeHtml(product.id)}"><small>${escapeHtml(product.displayName)}</small><b>${escapeHtml(product.displayPrice)}</b></button>`;
+            }).join("")}
+          </div>
+          <p class="donation-error" data-donation-error aria-live="polite"></p>
+          <div class="payment-security"><span></span><p><b>Compra procesada por App Store</b><small>Apple gestiona el cobro con tu cuenta; King Damas no recibe tus datos de pago.</small></p></div>
+        ` : `
+          <div class="donation-unavailable"><span>${icon("heart")}</span><h3>Aportes temporalmente no disponibles</h3><p>Las compras de App Store todavía no están configuradas para esta versión.</p></div>
+        `}
+      </section>
+      <aside class="panel donation-purpose">
+        <img src="/brand/icon-192.png?v=piece-1" alt="" />
+        <span class="section-kicker">¿A DÓNDE VA TU APORTE?</span>
+        <h2>Una mejor mesa para todos</h2>
+        <ul>
+          <li><span>01</span><p><b>Servicio estable</b><small>Partidas rápidas y conexión en tiempo real.</small></p></li>
+          <li><span>02</span><p><b>Mejoras continuas</b><small>Nuevas funciones y una experiencia más pulida.</small></p></li>
+          <li><span>03</span><p><b>Comunidad competitiva</b><small>Un espacio gratuito para jugadores de damas.</small></p></li>
+        </ul>
+        <p class="donation-fair-play">El aporte es opcional, no desbloquea contenido y no modifica tu Elo Damas ni ofrece ventajas en las partidas.</p>
+      </aside>
+    </div>`;
+}
+
+function bindIOSSupport(config: AppStoreConfig) {
+  const error = root.querySelector<HTMLElement>("[data-donation-error]");
+  const buttons = [
+    ...root.querySelectorAll<HTMLButtonElement>("[data-ios-support-product]"),
+  ];
+  if (!error || !config.appAccountToken || !buttons.length) return;
+
+  const setDisabled = (disabled: boolean) => {
+    buttons.forEach((button) => { button.disabled = disabled; });
+  };
+  buttons.forEach((button) => {
+    button.addEventListener("click", async () => {
+      const productId = button.dataset.iosSupportProduct;
+      if (!productId || !config.appAccountToken) return;
+      error.textContent = "";
+      setDisabled(true);
+      try {
+        const result = await purchaseNativeStoreProduct(
+          productId,
+          config.appAccountToken,
+        );
+        if (result.state === "cancelled") {
+          setDisabled(false);
+          toast("El aporte fue cancelado; no se realizó ningún cargo.", "error");
+          return;
+        }
+        if (result.state === "pending") {
+          error.textContent = "La compra espera aprobación de App Store. Se confirmará automáticamente.";
+          return;
+        }
+        if (!result.transaction) return;
+        try {
+          await confirmAndFinishNativeTransaction(result.transaction);
+        } catch (confirmationError) {
+          error.textContent = "Apple confirmó la compra, pero aún debemos acreditarla. La reintentaremos automáticamente; no vuelvas a comprar.";
+          console.warn("La confirmación del aporte quedó pendiente.", confirmationError);
+          return;
+        }
+        const card = root.querySelector<HTMLElement>(".donation-card");
+        if (card) {
+          card.innerHTML = `<div class="donation-success"><span>✓</span><small class="section-kicker">APORTE COMPLETADO</small><h2>Gracias por apoyar King Damas</h2><p>Tu aporte voluntario fue confirmado por App Store.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`;
+          bindNavigation();
+        }
+        toast("¡Gracias por apoyar King Damas!");
+      } catch (purchaseError) {
+        error.textContent = errorMessage(purchaseError);
+        setDisabled(false);
+      }
+    });
+  });
+}
+
 async function renderDonation() {
   root.innerHTML = appLayout(loadingMarkup("Preparando el espacio de donación…"), "donate");
   bindNavigation();
   try {
+    if (isIOSNativeApp()) {
+      const config = await api.appStoreConfig();
+      const products = config.enabled
+        ? await nativeStoreProducts(
+            config.products.support.map((product) => product.productId),
+          )
+        : [];
+      root.innerHTML = appLayout(iosSupportMarkup(config, products), "donate");
+      bindNavigation();
+      bindIOSSupport(config);
+      return;
+    }
     const config = await api.donationConfig();
     root.innerHTML = appLayout(donationMarkup(config), "donate");
     bindNavigation();
@@ -2213,10 +2382,21 @@ function worldTitleHoldersMarkup(world: WorldChampionshipResponse) {
   </section>`;
 }
 
+type TournamentPayment =
+  | {
+      kind: "paypal";
+      config: Awaited<ReturnType<typeof api.donationConfig>>;
+    }
+  | {
+      kind: "app-store";
+      config: AppStoreConfig;
+      product: NativeStoreProduct | null;
+    };
+
 function tournamentsMarkup(
   qualifier: QualifierTournamentResponse,
   world: WorldChampionshipResponse,
-  payment: Awaited<ReturnType<typeof api.donationConfig>>,
+  payment: TournamentPayment,
   participants: TournamentParticipant[],
 ) {
   const qualifierTournament = qualifier.tournament;
@@ -2227,6 +2407,9 @@ function tournamentsMarkup(
   const qualifierState = tournamentStatus(qualifierTournament, "Próxima inscripción");
   const worldState = tournamentStatus(worldTournament, "Próxima edición");
   const entryFee = Number(qualifier.entryFee.amount).toFixed(2);
+  const entryPrice = payment.kind === "app-store"
+    ? payment.product?.displayPrice || `${qualifier.entryFee.currency} $${entryFee}`
+    : `$${entryFee}`;
   const canRegister = Boolean(
     qualifierTournament?.status === "open" && !qualifier.viewer?.registered,
   );
@@ -2252,9 +2435,9 @@ function tournamentsMarkup(
     </div>
     <div class="tournament-cards">
       <article class="panel tournament-card tournament-card--qualifier">
-        <header><span class="tournament-emblem">${icon("users")}</span><div><small>ETAPA 1 · ${qualifierYear}</small><h2>Clasificación al<br>Campeonato Mundial</h2></div><div class="tournament-header-actions"><span class="tournament-status ${qualifierState.className}"><i></i>${qualifierState.label}</span>${canRegister ? `<button class="button button--primary tournament-entry-button tournament-entry-button--top" type="button" data-open-tournament-entry>${icon("tournament")} Inscribirme por $${entryFee}</button>` : ""}</div></header>
+        <header><span class="tournament-emblem">${icon("users")}</span><div><small>ETAPA 1 · ${qualifierYear}</small><h2>Clasificación al<br>Campeonato Mundial</h2></div><div class="tournament-header-actions"><span class="tournament-status ${qualifierState.className}"><i></i>${qualifierState.label}</span>${canRegister ? `<button class="button button--primary tournament-entry-button tournament-entry-button--top" type="button" data-open-tournament-entry>${icon("tournament")} Inscribirme por ${escapeHtml(entryPrice)}</button>` : ""}</div></header>
         <p class="tournament-description">Compite contra jugadores de tu país. Sobrevive a las rondas y gana uno de los cupos para representar a tu bandera.</p>
-        <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inscripción</small><b>$${entryFee}</b></span><span><small>Participantes</small><b>${qualifierTournament?.participantCount ?? 0}</b></span></div>
+        <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inscripción</small><b>${escapeHtml(entryPrice)}</b></span><span><small>Participantes</small><b>${qualifierTournament?.participantCount ?? 0}</b></span></div>
         <div class="tournament-timeline">
           <span class="is-active"><i></i><p><small>INSCRIPCIÓN HASTA</small><b>${tournamentDate(registrationEnd)}</b></p></span>
           <span><i></i><p><small>COMPETENCIA</small><b>${tournamentDate(qualifierStarts)} – ${tournamentDate(qualifierEnds)}</b></p></span>
@@ -2286,10 +2469,17 @@ function tournamentsMarkup(
       <span class="section-kicker">INSCRIPCIÓN OFICIAL · ${qualifierYear}</span>
       <h2 id="tournament-entry-title">Representa a tu país</h2>
       <p>Tu inscripción corresponde a la Clasificación al Campeonato Mundial y se confirma al completar el pago.</p>
-      <div class="tournament-entry-summary"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>País</small><b>${flag(currentUser?.countryCode || "")} ${escapeHtml(currentUser?.countryCode || "")}</b></span><span><small>Total</small><b>${qualifier.entryFee.currency} $${entryFee}</b></span></div>
+      <div class="tournament-entry-summary"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>País</small><b>${flag(currentUser?.countryCode || "")} ${escapeHtml(currentUser?.countryCode || "")}</b></span><span><small>Total</small><b>${escapeHtml(entryPrice)}</b></span></div>
       <p class="tournament-entry-error" data-tournament-entry-error aria-live="polite"></p>
-      <div class="tournament-paypal" data-tournament-paypal>${payment.enabled ? `<span class="loader loader--small"></span><small>Preparando pago seguro…</small>` : `<div class="donation-sdk-error"><b>PayPal no está disponible ahora mismo.</b><small>Inténtalo nuevamente más tarde.</small></div>`}</div>
-      <small class="tournament-entry-note">Al continuar confirmas que deseas participar bajo las reglas oficiales del torneo. El pago no mejora tu Elo ni concede ventajas.</small>
+      <div class="tournament-paypal" data-tournament-payment>${payment.kind === "app-store"
+        ? payment.config.enabled && payment.config.appAccountToken && payment.product
+          ? `<button class="button button--app-store" type="button" data-purchase-tournament-ios> Inscribirme con App Store · ${escapeHtml(payment.product.displayPrice)}</button>`
+          : `<div class="donation-sdk-error"><b>App Store no está disponible ahora mismo.</b><small>La inscripción no se puede procesar en esta versión.</small></div>`
+        : payment.config.enabled
+          ? `<span class="loader loader--small"></span><small>Preparando pago seguro…</small>`
+          : `<div class="donation-sdk-error"><b>PayPal no está disponible ahora mismo.</b><small>Inténtalo nuevamente más tarde.</small></div>`}</div>
+      <section class="tournament-official-rules"><b>Bases oficiales resumidas</b><ul><li>Organiza King Damas; competencia de habilidad en tablero 10×10.</li><li>Partidas de 30 minutos por jugador; dos derrotas eliminan y clasifican tres jugadores por país.</li><li>Inscripción hasta el ${tournamentDate(registrationEnd)}; competencia del ${tournamentDate(qualifierStarts)} al ${tournamentDate(qualifierEnds)}.</li><li>El Mundial distribuye 20%, 10% y 5% del fondo a los tres primeros puestos.</li></ul><small>Apple no patrocina, organiza ni participa en este torneo.</small></section>
+      <small class="tournament-entry-note">Al continuar aceptas las bases oficiales. La inscripción no mejora tu Elo ni concede ventajas competitivas.</small>
     </dialog>
     <dialog class="tournament-participants-dialog" aria-labelledby="tournament-participants-title">
       <header><div><span class="section-kicker">PERFILES DE TORNEO</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participants.length} ${participants.length === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
@@ -2309,11 +2499,21 @@ async function renderTournaments() {
   root.innerHTML = appLayout(loadingMarkup("Preparando los torneos…"), "tournaments");
   bindNavigation();
   try {
-    const [qualifier, world, payment] = await Promise.all([
+    const [qualifier, world] = await Promise.all([
       api.qualifierTournament(),
       api.worldChampionship(),
-      api.donationConfig(),
     ]);
+    let payment: TournamentPayment;
+    if (isIOSNativeApp()) {
+      const config = await api.appStoreConfig();
+      const tournamentProduct = config.products.tournamentEntry;
+      const product = config.enabled && config.appAccountToken
+        ? (await nativeStoreProducts([tournamentProduct.productId]))[0] || null
+        : null;
+      payment = { kind: "app-store", config, product };
+    } else {
+      payment = { kind: "paypal", config: await api.donationConfig() };
+    }
     const participants = qualifier.tournament
       ? (await api.tournamentParticipants(qualifier.tournament.id)).participants
       : [];
@@ -2329,12 +2529,12 @@ async function renderTournaments() {
 
 function bindTournaments(
   qualifier: QualifierTournamentResponse,
-  payment: Awaited<ReturnType<typeof api.donationConfig>>,
+  payment: TournamentPayment,
   participants: TournamentParticipant[],
 ) {
   const tournament = qualifier.tournament;
   const dialog = root.querySelector<HTMLDialogElement>(".tournament-entry-dialog");
-  const container = dialog?.querySelector<HTMLElement>("[data-tournament-paypal]");
+  const container = dialog?.querySelector<HTMLElement>("[data-tournament-payment]");
   const error = dialog?.querySelector<HTMLElement>("[data-tournament-entry-error]");
   let paymentButtons: PayPalButtonsInstance | null = null;
   let initializing = false;
@@ -2354,14 +2554,65 @@ function bindTournaments(
   dialog?.addEventListener("click", (event) => {
     if (event.target === dialog) closeDialog();
   });
+  dialog?.querySelector<HTMLButtonElement>("[data-purchase-tournament-ios]")?.addEventListener("click", async (event) => {
+    if (
+      payment.kind !== "app-store" ||
+      !payment.config.appAccountToken ||
+      !payment.product ||
+      !tournament ||
+      !error
+    ) return;
+    const button = event.currentTarget as HTMLButtonElement;
+    const originalLabel = button.textContent || "Inscribirme con App Store";
+    button.disabled = true;
+    button.textContent = "Confirmando con App Store…";
+    error.textContent = "";
+    try {
+      const result = await purchaseNativeStoreProduct(
+        payment.product.id,
+        payment.config.appAccountToken,
+      );
+      if (result.state === "cancelled") {
+        button.disabled = false;
+        button.textContent = originalLabel;
+        toast("La inscripción fue cancelada; no se realizó ningún cargo.", "error");
+        return;
+      }
+      if (result.state === "pending") {
+        error.textContent = "La compra espera aprobación de App Store. La inscripción se confirmará automáticamente.";
+        button.textContent = "Pendiente de aprobación";
+        return;
+      }
+      if (!result.transaction) return;
+      try {
+        await confirmAndFinishNativeTransaction(result.transaction);
+      } catch (confirmationError) {
+        error.textContent = "Apple confirmó el cobro, pero la inscripción aún está pendiente. La reintentaremos automáticamente; no vuelvas a comprar.";
+        button.textContent = "Confirmación pendiente";
+        console.warn("La inscripción de App Store quedó pendiente.", confirmationError);
+        return;
+      }
+      dialog?.close();
+      toast("¡Inscripción confirmada! Ya representas a tu país.");
+      await renderTournaments();
+    } catch (purchaseError) {
+      error.textContent = errorMessage(purchaseError);
+      button.disabled = false;
+      button.textContent = originalLabel;
+    }
+  });
   root.querySelector("[data-open-tournament-entry]")?.addEventListener("click", async () => {
     if (!dialog || !container || !error || !tournament) return;
     dialog.showModal();
-    if (!payment.enabled || !payment.clientId || paymentButtons || initializing) return;
+    if (payment.kind === "app-store") return;
+    if (!payment.config.enabled || !payment.config.clientId || paymentButtons || initializing) return;
     initializing = true;
     error.textContent = "";
     try {
-      const paypal = await loadPayPalSdk(payment.clientId, payment.currency);
+      const paypal = await loadPayPalSdk(
+        payment.config.clientId,
+        payment.config.currency,
+      );
       if (!dialog.isConnected) return;
       container.innerHTML = "";
       paymentButtons = paypal.Buttons({
@@ -4288,11 +4539,13 @@ function bindGameSettings(actions: {
   const menu = root.querySelector<HTMLElement>("[data-settings-menu]");
   const toggle = root.querySelector<HTMLButtonElement>("[data-settings-toggle]");
   const sidebar = root.querySelector<HTMLElement>(".game-sidebar");
+  const gamePage = root.querySelector<HTMLElement>(".game-page");
   if (menu && sidebar) sidebar.append(menu);
   const closeMenu = () => {
     menu?.classList.remove("is-open");
     menu?.setAttribute("aria-hidden", "true");
     toggle?.setAttribute("aria-expanded", "false");
+    toggle?.setAttribute("aria-label", "Abrir configuración");
     sidebar?.classList.remove("is-settings-visible");
   };
   toggle?.addEventListener("click", () => {
@@ -4300,9 +4553,20 @@ function bindGameSettings(actions: {
     menu?.classList.toggle("is-open", open);
     menu?.setAttribute("aria-hidden", String(!open));
     toggle.setAttribute("aria-expanded", String(open));
+    toggle.setAttribute("aria-label", open ? "Cerrar configuración" : "Abrir configuración");
     sidebar?.classList.toggle("is-settings-visible", open);
   });
-  root.querySelector("[data-settings-close]")?.addEventListener("click", closeMenu);
+  menu?.querySelector("[data-settings-close]")?.addEventListener("pointerdown", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    closeMenu();
+  });
+  gamePage?.addEventListener("pointerdown", (event) => {
+    if (!menu?.classList.contains("is-open")) return;
+    const target = event.target as Node;
+    if (menu.contains(target) || toggle?.contains(target)) return;
+    closeMenu();
+  }, { capture: true });
   root.querySelectorAll<HTMLElement>(".board-shell").forEach((boardShell) => {
     boardShell.addEventListener("pointerdown", closeMenu, { capture: true });
   });
@@ -4550,6 +4814,7 @@ export async function startApp(user: User | null) {
     const [, activeGame] = await Promise.all([
       connectRealtime(),
       activeGameRequest,
+      initializeNativeStoreForUser(currentUser),
     ]);
     if (activeGame?.status === "active") {
       const activePath = `/partida/${activeGame.id}`;
