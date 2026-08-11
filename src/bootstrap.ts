@@ -3,6 +3,7 @@ import { api, ApiError } from "./api";
 import { installInterfaceSounds } from "./game/sound";
 import { renderPublicLanding } from "./landing";
 import type { User } from "./types";
+import { initializeI18n, useUserLanguage } from "./i18n";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -27,6 +28,7 @@ function setSessionHint(active: boolean) {
 
 function launchApp(user: User | null) {
   if (launchPromise) return launchPromise;
+  if (user?.language) useUserLanguage(user.language);
   launchPromise = import("./main").then(({ startApp }) => startApp(user));
   return launchPromise;
 }
@@ -50,5 +52,6 @@ async function bootstrap() {
   }
 }
 
+initializeI18n();
 installInterfaceSounds();
 void bootstrap();

@@ -32,4 +32,10 @@ describe("mensaje de desafío privado", () => {
     const message = friendChallengeMessage(invitation, url);
     expect(message.endsWith(url)).toBe(true);
   });
+
+  it("crea el mensaje compartible en inglés", () => {
+    const text = friendChallengeText(invitation, "en");
+    expect(text).toContain("challenges you");
+    expect(text).toContain("30-minute 10×10 match");
+  });
 });

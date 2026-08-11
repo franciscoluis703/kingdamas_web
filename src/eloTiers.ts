@@ -1,3 +1,5 @@
+import { localeCode } from "./i18n";
+
 export const ELO_TIERS = [
   { minimum: 0, maximum: 699, label: "Aprendiz" },
   { minimum: 700, maximum: 999, label: "Jugador" },
@@ -23,6 +25,6 @@ export function eloTierRange(
   tier: (typeof ELO_TIERS)[number],
 ): string {
   return tier.maximum === null
-    ? `${tier.minimum.toLocaleString("es-DO")}+`
-    : `${tier.minimum.toLocaleString("es-DO")}–${tier.maximum.toLocaleString("es-DO")}`;
+    ? `${tier.minimum.toLocaleString(localeCode())}+`
+    : `${tier.minimum.toLocaleString(localeCode())}–${tier.maximum.toLocaleString(localeCode())}`;
 }

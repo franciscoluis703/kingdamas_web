@@ -1,4 +1,5 @@
 import { API_URL } from "./config";
+import { currentLanguage, type AppLanguage } from "./i18n";
 import type {
   ChatMessage,
   DirectConversation,
@@ -32,6 +33,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  headers.set("Accept-Language", currentLanguage());
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers,
@@ -91,7 +93,7 @@ export const api = {
   }) =>
     request<{ user: User }>("/auth/register", {
       method: "POST",
-      body: json(data),
+      body: json({ ...data, language: currentLanguage() }),
     }),
   forgotPassword: (email: string) =>
     request<{ message: string }>("/auth/forgot-password", {
@@ -119,6 +121,11 @@ export const api = {
     }),
   removeAvatar: () =>
     request<void>("/users/me/avatar", { method: "DELETE" }),
+  updateLanguage: (language: AppLanguage) =>
+    request<{ language: AppLanguage }>("/users/me/preferences", {
+      method: "PATCH",
+      body: json({ language }),
+    }),
   donationConfig: () =>
     request<{
       enabled: boolean;
@@ -154,17 +161,24 @@ export const api = {
       request<{ users: User[] }>(
         `/users/${encodeURIComponent(username)}/following`,
       )),
+  followers: (username: string, offset = 0) =>
+    cachedRequest(`followers:${username.toLowerCase()}:${offset}`, 20_000, () =>
+      request<{ users: User[]; nextOffset: number; hasMore: boolean }>(
+        `/users/${encodeURIComponent(username)}/followers?offset=${offset}`,
+      )),
   follow: async (username: string) => {
     await request<void>(`/users/${encodeURIComponent(username)}/follow`, {
       method: "POST",
     });
     invalidateCachedRequests("following:");
+    invalidateCachedRequests("followers:");
   },
   unfollow: async (username: string) => {
     await request<void>(`/users/${encodeURIComponent(username)}/follow`, {
       method: "DELETE",
     });
     invalidateCachedRequests("following:");
+    invalidateCachedRequests("followers:");
   },
   conversations: () =>
     request<{ conversations: DirectConversation[] }>("/messages"),

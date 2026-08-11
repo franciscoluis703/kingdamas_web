@@ -51,6 +51,15 @@ import type {
   WorldChampionshipResponse,
 } from "./types";
 import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
+import {
+  LANGUAGE_CHANGE_EVENT,
+  currentLanguage,
+  languageSelectorMarkup,
+  localeCode,
+  translateText,
+  useUserLanguage,
+  type AppLanguage,
+} from "./i18n";
 
 interface PayPalButtonsInstance {
   render: (container: HTMLElement) => Promise<void>;
@@ -94,6 +103,8 @@ let outgoingChallengeTimer: number | null = null;
 let incomingChallengeDialog: HTMLDialogElement | null = null;
 let incomingChallengeId: string | null = null;
 let incomingChallengeCheckRunning = false;
+let languageListenerBound = false;
+let languageSaveQueue: Promise<void> = Promise.resolve();
 
 const LEGAL_CONSENT_VERSION = "2026-08-09";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -361,6 +372,7 @@ function publicHeader() {
       <button class="brand brand--button" type="button" data-route="/inicio" aria-label="Ir al inicio">${logoMarkup()}</button>
       <nav class="public-nav" aria-label="Navegación principal">
         <a href="#como-jugar">Cómo jugar</a>
+        ${languageSelectorMarkup("language-selector--public")}
         <button class="button button--quiet" type="button" data-open-auth="login">Entrar</button>
         <button class="button button--primary button--small" type="button" data-open-auth="register">Crear cuenta</button>
       </nav>
@@ -395,6 +407,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
         <header class="app-header">
           <button class="icon-button mobile-menu" type="button" data-menu aria-label="Abrir menú">${icon("menu")}</button>
           <button class="mobile-brand brand brand--button" type="button" data-route="/inicio">${logoMarkup()}</button>
+          ${languageSelectorMarkup("language-selector--app")}
           <button class="account-chip" type="button" data-player-profile-link="${escapeHtml(currentUser.username)}" aria-label="Ver tu perfil">
             <span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--small">${avatar}</span>
             <span class="account-copy"><span class="account-name-line"><b>${escapeHtml(currentUser.name)}</b>${worldTrophyMarkup(currentUser, "world-trophy--account")}</span><small>@${escapeHtml(currentUser.username)}</small></span>
@@ -650,7 +663,7 @@ function renderLanding() {
           <div class="hero-board-wrap" aria-hidden="true">
             <div class="hero-glow"></div>
             <div class="mini-board">${decorativeBoard()}</div>
-            <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>1,428 <i>+18</i></b></div>
+            <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>${(1428).toLocaleString(localeCode())} <i>+18</i></b></div>
             <div class="floating-card floating-card--clock"><span>${icon("clock")}</span><b>10:00</b><small>Partida rápida</small></div>
           </div>
         </section>
@@ -949,7 +962,7 @@ function dashboardMarkup(rating: Rating | undefined, leaders: LeaderboardPlayer[
   return `
     <section class="dashboard-heading">
       <div><span class="eyebrow"><i></i>RESUMEN PERSONAL</span><h1 class="dashboard-greeting"><span>Hola, ${escapeHtml(currentUser?.name.split(" ")[0])}</span>${currentUser ? worldTrophyMarkup(currentUser, "world-trophy--heading") : ""}</h1>${currentUser ? worldTitleRecognitionMarkup(currentUser, "world-title-recognition--heading") : ""}<p>Este es tu recorrido actual en Elo Damas.</p></div>
-      <div class="rating-card"><span>${icon("ranking")}</span><div><small>Tu Elo Damas</small><b>${value.toLocaleString("es-DO")}</b><em>${escapeHtml(rating?.tier ?? eloTier(value))}</em></div></div>
+      <div class="rating-card"><span>${icon("ranking")}</span><div><small>Tu Elo Damas</small><b>${value.toLocaleString(localeCode())}</b><em>${escapeHtml(rating?.tier ?? eloTier(value))}</em></div></div>
     </section>
     <div class="dashboard-grid">
       <section class="panel home-next-game">
@@ -974,7 +987,7 @@ function playPageMarkup(rating: Rating | undefined) {
   return `
     <section class="page-heading play-page-heading">
       <div><span class="eyebrow"><i></i>ENTRA A LA MESA</span><h1>Jugar</h1><p>Configura el reloj y decide a quién quieres enfrentarte.</p></div>
-      <div class="rating-card"><span>${icon("ranking")}</span><div><small>Competirás con</small><b>${value.toLocaleString("es-DO")}</b><em>${escapeHtml(rating?.tier ?? eloTier(value))}</em></div></div>
+      <div class="rating-card"><span>${icon("ranking")}</span><div><small>Competirás con</small><b>${value.toLocaleString(localeCode())}</b><em>${escapeHtml(rating?.tier ?? eloTier(value))}</em></div></div>
     </section>
     <div class="play-page-layout">
       <section class="panel play-panel play-setup-panel">
@@ -1276,7 +1289,7 @@ function renderInformationHub() {
 function termsConsentMarkup() {
   const acceptedAt = legalConsentAcceptedAt();
   if (acceptedAt) {
-    const date = new Date(acceptedAt).toLocaleString("es-DO", {
+    const date = new Date(acceptedAt).toLocaleString(localeCode(), {
       day: "numeric",
       month: "long",
       year: "numeric",
@@ -1304,7 +1317,7 @@ function legalContactMarkup() {
 
 function legalCookiesMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea tecnología esencial para mantener la sesión y preferencias locales para personalizar el juego.</p></aside>
-    <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se envía de forma segura al backend.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
+    <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se envía de forma segura al backend.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
     <section><h2>Servicios externos</h2><p>La biblioteca de PayPal se carga únicamente cuando visitas la sección de donaciones y dicha empresa puede utilizar sus propias tecnologías conforme a sus políticas. Los audios, el tablero y los recursos visuales se sirven desde King Damas.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
@@ -1323,7 +1336,7 @@ function legalTermsMarkup() {
 
 function legalPrivacyMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Compromiso de privacidad</b><p>Usamos los datos necesarios para operar la cuenta, las partidas y la comunidad. No vendemos información personal.</p></aside>
-    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico.</p></section>
+    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico.</p></section>
     <section><h2>2. Para qué los utilizamos</h2><p>Los usamos para autenticarte, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar funciones comunitarias, gestionar torneos y pagos, atender solicitudes, prevenir abuso y mantener la seguridad y estabilidad del servicio.</p></section>
     <section><h2>3. Información visible</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran únicamente a sus participantes, salvo revisión necesaria por seguridad o cumplimiento.</p></section>
     <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores de alojamiento, base de datos, caché, correo y pagos para prestar el servicio. Algunos pueden procesar información fuera de la República Dominicana. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida.</p></section>
@@ -1360,7 +1373,7 @@ function communityPlayerMarkup(
 ) {
   return `<article class="community-player">
     ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--community")}<span class="community-player-copy"><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--compact")}</span>`, "community-player-profile")}
-    ${player.rating !== undefined ? `<strong>${player.rating.toLocaleString("es-DO")}<small>Elo</small></strong>` : ""}
+    ${player.rating !== undefined ? `<strong>${player.rating.toLocaleString(localeCode())}<small>Elo</small></strong>` : ""}
     <div class="community-player-actions">
       <button type="button" data-open-conversation="${escapeHtml(player.username)}" aria-label="Enviar mensaje a ${escapeHtml(player.name)}" title="Mensaje">${icon("chat")}</button>
       ${placement === "friends"
@@ -1371,14 +1384,14 @@ function communityPlayerMarkup(
 }
 
 function communityConversationMarkup(conversation: DirectConversation) {
-  const when = new Date(conversation.lastMessageAt).toLocaleDateString("es-DO", {
+  const when = new Date(conversation.lastMessageAt).toLocaleDateString(localeCode(), {
     day: "2-digit",
     month: "short",
   });
   return `<article class="conversation-row">
     ${playerProfileButton(conversation.user, `${avatarMarkup(conversation.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b>${escapeHtml(conversation.user.name)}</b>${worldTrophyMarkup(conversation.user)}</span><small>@${escapeHtml(conversation.user.username)}</small>${worldTitleRecognitionMarkup(conversation.user, "world-title-recognition--compact")}</span>`, "conversation-player-profile")}
     <time>${escapeHtml(when)}</time>
-    <button class="conversation-preview" type="button" data-open-conversation="${escapeHtml(conversation.user.username)}" aria-label="Abrir conversación con ${escapeHtml(conversation.user.name)}"><span>${icon("chat")}</span>${conversation.lastMessageOwn ? "Tú: " : ""}${escapeHtml(conversation.lastMessage)}</button>
+    <button class="conversation-preview" type="button" data-open-conversation="${escapeHtml(conversation.user.username)}" aria-label="Abrir conversación con ${escapeHtml(conversation.user.name)}"><span>${icon("chat")}</span>${conversation.lastMessageOwn ? "Tú: " : ""}<span class="conversation-preview-message" translate="no">${escapeHtml(conversation.lastMessage)}</span></button>
     ${conversation.unreadCount ? `<i>${conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</i>` : ""}
   </article>`;
 }
@@ -1394,8 +1407,8 @@ function communityMarkup(
   const visibleDiscovery = discovery.filter((player) => player.id !== currentUser?.id).slice(0, 8);
   return `
     <section class="page-heading community-heading">
-      <div><span class="eyebrow"><i></i>JUGADORES DE KING DAMAS</span><h1>Comunidad</h1><span class="community-registered-count" aria-label="${registeredUsers.toLocaleString("es-DO")} usuarios registrados"><b>${registeredUsers.toLocaleString("es-DO")}</b></span><p>Encuentra rivales, crea tu círculo y mantén la conversación fuera del tablero.</p></div>
-      <div class="community-stats"><span><b>${totalPlayers.toLocaleString("es-DO")}</b><small>Clasificados</small></span><span><b data-community-friend-count>${friends.length}</b><small>Amigos</small></span><span><b data-community-unread-count>${conversations.reduce((total, item) => total + item.unreadCount, 0)}</b><small>Sin leer</small></span></div>
+      <div><span class="eyebrow"><i></i>JUGADORES DE KING DAMAS</span><h1>Comunidad</h1><span class="community-registered-count" aria-label="${registeredUsers.toLocaleString(localeCode())} usuarios registrados"><b>${registeredUsers.toLocaleString(localeCode())}</b></span><p>Encuentra rivales, crea tu círculo y mantén la conversación fuera del tablero.</p></div>
+      <div class="community-stats"><span><b>${totalPlayers.toLocaleString(localeCode())}</b><small>Clasificados</small></span><span><b data-community-friend-count>${friends.length}</b><small>Amigos</small></span><span><b data-community-unread-count>${conversations.reduce((total, item) => total + item.unreadCount, 0)}</b><small>Sin leer</small></span></div>
     </section>
     <label class="community-search"><span>${icon("search")}</span><input type="search" autocomplete="off" minlength="2" maxlength="60" placeholder="Buscar por nombre o @usuario…" data-community-search /><kbd>Buscar</kbd></label>
     <div class="community-grid">
@@ -1561,7 +1574,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   const renderDirectMessages = (messages: DirectMessage[]) => {
     if (!directMessages) return;
     directMessages.innerHTML = messages.length
-      ? messages.map((message) => `<article class="direct-message ${message.own ? "is-own" : ""}"><p>${escapeHtml(message.message)}</p><time>${new Date(message.createdAt).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}</time></article>`).join("")
+      ? messages.map((message) => `<article class="direct-message ${message.own ? "is-own" : ""}"><p>${escapeHtml(message.message)}</p><time>${new Date(message.createdAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></article>`).join("")
       : `<div class="direct-chat-empty"><span>${icon("chat")}</span><p>Inicia la conversación con un saludo.</p></div>`;
     directMessages.scrollTop = directMessages.scrollHeight;
   };
@@ -1699,7 +1712,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
 }
 
 function tournamentDate(value: string | Date) {
-  return new Date(value).toLocaleDateString("es-DO", {
+  return new Date(value).toLocaleDateString(localeCode(), {
     day: "numeric",
     month: "short",
     year: "numeric",
@@ -1740,7 +1753,7 @@ function tournamentParticipantCards(participants: TournamentParticipant[]) {
   return participants.map((participant) => `<button class="tournament-participant-card" type="button" data-player-profile-link="${escapeHtml(participant.username)}" aria-label="Ver perfil de ${escapeHtml(participant.name)}">
     ${avatarMarkup(participant, "avatar avatar--tournament")}
     <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small>${worldTitleRecognitionMarkup(participant, "world-title-recognition--compact")}<em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
-    <strong>${participant.rating.toLocaleString("es-DO")}<small>Elo Damas</small></strong>
+    <strong>${participant.rating.toLocaleString(localeCode())}<small>Elo Damas</small></strong>
     <i aria-hidden="true">→</i>
   </button>`).join("");
 }
@@ -1752,7 +1765,7 @@ function tournamentPlayerProfileMarkup(
   const profile = response.profile;
   const mode = response.modes.find((item) => item.boardSize === 10) ?? response.modes[0];
   const joined = profile.memberSince
-    ? new Date(profile.memberSince).toLocaleDateString("es-DO", { month: "short", year: "numeric" })
+    ? new Date(profile.memberSince).toLocaleDateString(localeCode(), { month: "short", year: "numeric" })
     : "—";
   return `<section class="tournament-player-profile">
     <button class="tournament-profile-back" type="button" data-back-participants>← ${escapeHtml(backLabel)}</button>
@@ -1761,7 +1774,7 @@ function tournamentPlayerProfileMarkup(
       <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">PODIO MUNDIAL VIGENTE · ${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].podiumLabel)}</strong>` : ""}</span>
       ${!profile.isSelf ? `<button class="button ${profile.isFollowing ? "button--quiet" : "button--primary"} button--small" type="button" data-follow-tournament-player="${escapeHtml(profile.username)}" ${profile.isFollowing ? "disabled" : ""}>${profile.isFollowing ? "✓ En tus amigos" : `${icon("userPlus")} Agregar amigo`}</button>` : `<span class="tournament-own-profile">Tu perfil</span>`}
     </div>
-    <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString("es-DO") ?? mode?.rating?.toLocaleString("es-DO") ?? "1,200"}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
+    <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString(localeCode()) ?? (1200).toLocaleString(localeCode())}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString(localeCode()) ?? mode?.rating?.toLocaleString(localeCode()) ?? (1200).toLocaleString(localeCode())}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
     <div class="tournament-profile-record"><span><b>${response.summary.totalGames}</b><small>Partidas</small></span><span><b>${response.summary.wins}</b><small>Victorias</small></span><span><b>${response.summary.winRate}%</b><small>Rendimiento</small></span><span><b>${profile.followerCount}</b><small>Seguidores</small></span></div>
     <div class="tournament-profile-meta"><span><small>Miembro desde</small><b>${escapeHtml(joined)}</b></span><span><small>Actividad reciente</small><b>${response.summary.gamesLast30Days} partidas en 30 días</b></span><span><small>Promedio</small><b>${response.summary.averageMoves || 0} movimientos</b></span></div>
   </section>`;
@@ -1812,7 +1825,7 @@ function playerMatchHistoryMarkup(
         const date = new Date(match.createdAt);
         const playedAt = Number.isNaN(date.getTime())
           ? "Fecha no disponible"
-          : date.toLocaleString("es-DO", {
+          : date.toLocaleString(localeCode(), {
               day: "numeric",
               month: "short",
               year: "numeric",
@@ -1856,7 +1869,7 @@ function playerProfilePageMarkup(
   const mode = response.modes.find((item) => item.boardSize === 10) ?? response.modes[0];
   const rating = mode?.rating ?? 1200;
   const joined = profile.memberSince
-    ? new Date(profile.memberSince).toLocaleDateString("es-DO", {
+    ? new Date(profile.memberSince).toLocaleDateString(localeCode(), {
         day: "numeric",
         month: "long",
         year: "numeric",
@@ -1881,29 +1894,36 @@ function playerProfilePageMarkup(
       <div class="player-profile-hero">
         ${avatarMarkup(profile, "avatar avatar--public-profile")}
         <div><small>${escapeHtml(mode?.tier ?? eloTier(rating))}</small><h2><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--public-profile")}</h2><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p></div>
-        <div class="player-profile-followers"><span><b>${profile.followerCount}</b><small>Seguidores</small></span><button type="button" data-view-following aria-label="Ver a quién sigue @${escapeHtml(profile.username)}"><b>${profile.followingCount}</b><small>Siguiendo <i aria-hidden="true">→</i></small></button></div>
+        <div class="player-profile-followers"><button type="button" data-view-followers aria-label="Ver quién sigue a @${escapeHtml(profile.username)}"><b>${profile.followerCount}</b><small>Seguidores <i aria-hidden="true">→</i></small></button><button type="button" data-view-following aria-label="Ver a quién sigue @${escapeHtml(profile.username)}"><b>${profile.followingCount}</b><small>Siguiendo <i aria-hidden="true">→</i></small></button></div>
       </div>
       ${title ? `<div class="player-world-title is-${profile.worldTitle?.placement}">${worldTrophyMarkup(profile, "world-trophy--profile-banner")}<span><small>PODIO MUNDIAL VIGENTE</small><b>${escapeHtml(title.label)}</b><p>Trofeo oficial y pase directo al próximo Campeonato Mundial.</p></span></div>` : ""}
-      <div class="player-profile-rating"><span><small>Elo Damas</small><b>${rating.toLocaleString("es-DO")}</b></span><span><small>Mejor Elo</small><b>${(mode?.peakRating ?? rating).toLocaleString("es-DO")}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
+      <div class="player-profile-rating"><span><small>Elo Damas</small><b>${rating.toLocaleString(localeCode())}</b></span><span><small>Mejor Elo</small><b>${(mode?.peakRating ?? rating).toLocaleString(localeCode())}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
       <div class="player-profile-record"><span><b>${response.summary.totalGames}</b><small>Partidas</small></span><span><b>${response.summary.wins}</b><small>Victorias</small></span><span><b>${response.summary.losses}</b><small>Derrotas</small></span><span><b>${response.summary.draws}</b><small>Tablas</small></span><span><b>${response.summary.winRate}%</b><small>Rendimiento</small></span></div>
       <div class="player-profile-details"><span><small>Miembro desde</small><b>${escapeHtml(joined)}</b></span><span><small>Últimos 30 días</small><b>${response.summary.gamesLast30Days} partidas</b></span><span><small>Promedio por partida</small><b>${response.summary.averageMoves || 0} movimientos</b></span><span><small>Duración promedio</small><b>${formatDuration(response.summary.averageDuration || 0)}</b></span></div>
       ${playerMatchHistorySectionMarkup()}
     </section>
     <dialog class="profile-following-dialog" aria-labelledby="profile-following-title">
-      <header><div><span class="section-kicker">CÍRCULO DE JUGADORES</span><h2 id="profile-following-title">Personas que sigue @${escapeHtml(profile.username)}</h2><p><b>${profile.followingCount}</b> ${profile.followingCount === 1 ? "perfil" : "perfiles"}</p></div><button type="button" data-close-profile-following aria-label="Cerrar">×</button></header>
+      <header><div><span class="section-kicker">CÍRCULO DE JUGADORES</span><h2 id="profile-following-title" data-social-list-title>Personas que sigue @${escapeHtml(profile.username)}</h2><p><b data-social-list-count>${profile.followingCount}</b> <span data-social-list-count-label>${profile.followingCount === 1 ? "perfil" : "perfiles"}</span></p></div><button type="button" data-close-profile-following aria-label="Cerrar">×</button></header>
       <div class="profile-following-list" data-profile-following-list></div>
     </dialog>`;
 }
 
-function profileFollowingListMarkup(users: User[]) {
+function profileSocialListMarkup(
+  users: User[],
+  kind: "followers" | "following",
+  hasMore = false,
+) {
   if (!users.length) {
-    return `<div class="profile-following-empty"><span>${icon("users")}</span><b>Aún no sigue a ningún jugador</b><p>Cuando agregue personas a su círculo, aparecerán aquí.</p></div>`;
+    return kind === "followers"
+      ? `<div class="profile-following-empty"><span>${icon("users")}</span><b>Aún no tiene seguidores</b><p>Las personas que sigan este perfil aparecerán aquí.</p></div>`
+      : `<div class="profile-following-empty"><span>${icon("users")}</span><b>Aún no sigue a ningún jugador</b><p>Cuando agregue personas a su círculo, aparecerán aquí.</p></div>`;
   }
-  return users.map((user) => `<button class="profile-following-player" type="button" data-player-profile-link="${escapeHtml(user.username)}" aria-label="Ver perfil de ${escapeHtml(user.name)}">
+  const profiles = users.map((user) => `<button class="profile-following-player" type="button" data-player-profile-link="${escapeHtml(user.username)}" aria-label="Ver perfil de ${escapeHtml(user.name)}">
     ${avatarMarkup(user, "avatar avatar--profile-following")}
     <span><span class="player-name-with-title"><b>${escapeHtml(user.name)}</b>${worldTrophyMarkup(user)}</span><small>${flag(user.countryCode)} @${escapeHtml(user.username)}</small>${worldTitleRecognitionMarkup(user, "world-title-recognition--compact")}</span>
     <i aria-hidden="true">→</i>
   </button>`).join("");
+  return `${profiles}${hasMore ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-view-more-social>Ver más</button><small>Se cargarán 20 perfiles adicionales.</small></div>` : ""}`;
 }
 
 async function renderPlayerProfile(username: string) {
@@ -1978,20 +1998,83 @@ async function renderPlayerProfile(username: string) {
     });
     const followingDialog = root.querySelector<HTMLDialogElement>(".profile-following-dialog");
     const followingList = followingDialog?.querySelector<HTMLElement>("[data-profile-following-list]");
-    const closeFollowing = () => followingDialog?.close();
-    root.querySelector<HTMLButtonElement>("[data-view-following]")?.addEventListener("click", async () => {
-      if (!followingDialog || !followingList) return;
-      followingList.innerHTML = `<div class="profile-following-loading"><span class="loader"></span><p>Cargando perfiles…</p></div>`;
-      followingDialog.showModal();
+    const socialTitle = followingDialog?.querySelector<HTMLElement>("[data-social-list-title]");
+    const socialCount = followingDialog?.querySelector<HTMLElement>("[data-social-list-count]");
+    const socialCountLabel = followingDialog?.querySelector<HTMLElement>("[data-social-list-count-label]");
+    let socialListVersion = 0;
+    let socialUsers: User[] = [];
+    let socialOffset = 0;
+    let socialLoading = false;
+    const closeFollowing = () => {
+      socialListVersion += 1;
+      followingDialog?.close();
+    };
+    const loadSocialList = async (
+      kind: "followers" | "following",
+      version: number,
+      firstPage: boolean,
+    ) => {
+      if (!followingList || socialLoading) return;
+      socialLoading = true;
+      const moreButton = followingList.querySelector<HTMLButtonElement>("[data-view-more-social]");
+      if (moreButton) {
+        moreButton.disabled = true;
+        moreButton.textContent = "Cargando…";
+      }
       try {
-        const result = await api.following(username);
-        if (followingList.isConnected) followingList.innerHTML = profileFollowingListMarkup(result.users);
+        if (kind === "followers") {
+          const result = await api.followers(username, firstPage ? 0 : socialOffset);
+          if (version !== socialListVersion || !followingList.isConnected) return;
+          socialUsers.push(...result.users);
+          socialOffset = result.nextOffset;
+          followingList.innerHTML = profileSocialListMarkup(
+            socialUsers,
+            kind,
+            result.hasMore,
+          );
+          followingList
+            .querySelector<HTMLButtonElement>("[data-view-more-social]")
+            ?.addEventListener("click", () => {
+              void loadSocialList(kind, version, false);
+            });
+        } else {
+          const result = await api.following(username);
+          if (version !== socialListVersion || !followingList.isConnected) return;
+          socialUsers = result.users;
+          followingList.innerHTML = profileSocialListMarkup(socialUsers, kind);
+        }
       } catch (error) {
-        if (followingList.isConnected) {
+        if (version === socialListVersion && followingList.isConnected) {
           followingList.innerHTML = `<div class="profile-following-empty"><span>!</span><b>No pudimos cargar los perfiles</b><p>${escapeHtml(errorMessage(error))}</p></div>`;
         }
+      } finally {
+        if (version === socialListVersion) socialLoading = false;
       }
-    });
+    };
+    const openSocialList = (kind: "followers" | "following") => {
+      if (!followingDialog || !followingList) return;
+      const count = kind === "followers"
+        ? response.profile.followerCount
+        : response.profile.followingCount;
+      const version = ++socialListVersion;
+      socialUsers = [];
+      socialOffset = 0;
+      socialLoading = false;
+      if (socialTitle) {
+        socialTitle.textContent = kind === "followers"
+          ? `Seguidores de @${username}`
+          : `Personas que sigue @${username}`;
+      }
+      if (socialCount) socialCount.textContent = String(count);
+      if (socialCountLabel) socialCountLabel.textContent = count === 1 ? "perfil" : "perfiles";
+      followingList.innerHTML = `<div class="profile-following-loading"><span class="loader"></span><p>Cargando perfiles…</p></div>`;
+      followingDialog.showModal();
+      void loadSocialList(kind, version, true);
+    };
+    root.querySelector<HTMLButtonElement>("[data-view-followers]")
+      ?.addEventListener("click", () => openSocialList("followers"));
+    root.querySelector<HTMLButtonElement>("[data-view-following]")
+      ?.addEventListener("click", () => openSocialList("following"));
     followingDialog?.querySelector("[data-close-profile-following]")?.addEventListener("click", closeFollowing);
     followingDialog?.addEventListener("click", (event) => {
       if (event.target === followingDialog) closeFollowing();
@@ -2004,7 +2087,7 @@ async function renderPlayerProfile(username: string) {
 }
 
 function qualifierMatchDate(value: string) {
-  return new Date(value).toLocaleDateString("es-DO", {
+  return new Date(value).toLocaleDateString(localeCode(), {
     weekday: "short",
     day: "numeric",
     month: "short",
@@ -2023,7 +2106,7 @@ function qualifierBracketPlayerMarkup(
   const winner = match.winnerId === player.id;
   return playerProfileButton(player, `
     ${avatarMarkup(player, "avatar avatar--bracket")}
-    <span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString("es-DO")}</small></span>
+    <span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString(localeCode())}</small></span>
     ${winner ? "<i>✓</i>" : ""}
   `, `qualifier-bracket-player ${winner ? "is-winner" : ""}`);
 }
@@ -2038,7 +2121,7 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
       : viewer.participant.state === "eliminated"
         ? `<div class="qualifier-viewer-match is-eliminated"><span>×</span><p><small>RESULTADO FINAL</small><b>Participación finalizada</b><em>El cuadro registra ${viewer.participant.losses} derrotas.</em></p></div>`
         : viewer.opponent
-          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><span class="player-name-with-title"><b>${escapeHtml(viewer.opponent.name)}</b>${worldTrophyMarkup(viewer.opponent)}</span><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString("es-DO")} Elo Damas</em>${worldTitleRecognitionMarkup(viewer.opponent, "world-title-recognition--compact")}</p>`, "qualifier-viewer-opponent")}</div>`
+          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><span class="player-name-with-title"><b>${escapeHtml(viewer.opponent.name)}</b>${worldTrophyMarkup(viewer.opponent)}</span><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString(localeCode())} Elo Damas</em>${worldTitleRecognitionMarkup(viewer.opponent, "world-title-recognition--compact")}</p>`, "qualifier-viewer-opponent")}</div>`
           : `<div class="qualifier-viewer-match is-waiting"><span>…</span><p><small>TU PRIMER CRUCE · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "26 JUN 2027"}</small><b>Rival por confirmar</b><em>Quedarás emparejado con el próximo jugador disponible de tu país.</em></p></div>`;
   const qualifierSlots = Array.from({ length: bracket.rules.qualifyingPlaces }, (_, index) => bracket.qualifiers[index] || null);
   const stateLabels = {
@@ -2141,7 +2224,7 @@ function tournamentsMarkup(
         <p class="tournament-description">Los representantes de cada país se enfrentan en la máxima competencia anual de King Damas.</p>
         <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inicio</small><b>${tournamentDate(worldStarts)}</b></span><span><small>Final</small><b>${tournamentDate(worldEnds)}</b></span></div>
         ${worldTitleHoldersMarkup(world)}
-        <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString("es-DO")}</b></p>` : ""}</div>
+        <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString(localeCode())}</b></p>` : ""}</div>
         <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Clasificados por país y los tres campeones vigentes.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>El podio cambia de dueño</b><small>Los tres mejores reciben los trofeos hasta la siguiente edición.</small></p></li></ul>
         ${viewerHasWorldPlace ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>${world.viewer?.directlyQualified ? "Tu pase directo al Mundial está confirmado" : "Estás en el Campeonato Mundial"}</b><small>${world.viewer?.directlyQualified ? "Eres parte del podio vigente y no necesitas jugar la clasificatoria." : "Tu clasificación fue registrada automáticamente."}</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático al clasificar por tu país. Los tres campeones vigentes conservan pase directo.</div>`}
       </article>
@@ -2315,10 +2398,10 @@ function bindTournaments(
     if (event.target === participantsDialog) participantsDialog.close();
   });
   participantSearch?.addEventListener("input", () => {
-    const query = participantSearch.value.trim().toLocaleLowerCase("es");
+    const query = participantSearch.value.trim().toLocaleLowerCase(localeCode());
     const visible = participants.filter((participant) =>
-      participant.name.toLocaleLowerCase("es").includes(query)
-      || participant.username.toLocaleLowerCase("es").includes(query),
+      participant.name.toLocaleLowerCase(localeCode()).includes(query)
+      || participant.username.toLocaleLowerCase(localeCode()).includes(query),
     );
     showParticipantList(visible);
     if (participantSearch) participantSearch.value = query;
@@ -2589,7 +2672,7 @@ function showIncomingChallenge(invitation: DirectInvitation) {
     <p>¿Aceptas enfrentarte a ${escapeHtml(challenger.name)} en una partida de ${invitation.timeControlMinutes} minutos por jugador?</p>
     <div class="direct-challenge-player">
       ${avatarMarkup(challenger, "avatar avatar--invite-preview")}
-      <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(challenger.name)}</b>${worldTrophyMarkup(challenger)}</span><em>@${escapeHtml(challenger.username)} · ${challenger.rating.toLocaleString("es-DO")} Elo</em></span>
+      <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(challenger.name)}</b>${worldTrophyMarkup(challenger)}</span><em>@${escapeHtml(challenger.username)} · ${challenger.rating.toLocaleString(localeCode())} Elo</em></span>
     </div>
     <div class="incoming-challenge-detail"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>${invitation.timeControlMinutes} min</b></span></div>
     <div class="direct-challenge-status" data-incoming-challenge-status aria-live="polite"></div>
@@ -2734,7 +2817,9 @@ function openFriendChallenge(invitation: LinkInvitation) {
     if (!navigator.share) return showCopied();
     try {
       await navigator.share({
-        title: `@${invitation.sender.username} te reta por la corona`,
+        title: currentLanguage() === "en"
+          ? `@${invitation.sender.username} challenges you for the crown`
+          : `@${invitation.sender.username} te reta por la corona`,
         text: challengeText,
         url,
       });
@@ -2896,7 +2981,7 @@ function leaderboardTable(players: LeaderboardPlayer[], compact: boolean) {
     ${players.map((player) => `<div class="ranking-row ${currentUser?.id === player.id ? "is-me" : ""}" role="row">
       <span class="rank-position ${player.position <= 3 ? "is-top" : ""}">${player.position <= 3 ? ["🥇", "🥈", "🥉"][player.position - 1] : `#${player.position}`}</span>
       ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--table")}<span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player, "world-trophy--ranking")}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--ranking")}</span>`, "rank-player")}
-      <span>${player.gamesPlayed}</span><span>${player.wins}-${player.losses}-${player.draws}</span><strong>${player.rating.toLocaleString("es-DO")}<small>${escapeHtml(player.tier ?? eloTier(player.rating))}</small></strong>
+      <span>${player.gamesPlayed}</span><span>${player.wins}-${player.losses}-${player.draws}</span><strong>${player.rating.toLocaleString(localeCode())}<small>${escapeHtml(player.tier ?? eloTier(player.rating))}</small></strong>
     </div>`).join("")}
   </div>`;
 }
@@ -3012,7 +3097,7 @@ function legendRoadCardMarkup(
     <span class="legend-road-level"><i>${legend.level}</i></span>
     ${legendAvatarMarkup(legend, "legend-road-avatar", true)}
     <div class="legend-road-copy"><small>ACTO ${chapter} · NIVEL ${legend.level}</small><h2>${escapeHtml(legend.name)}</h2><b>${escapeHtml(legend.epithet)} · ${escapeHtml(legend.difficulty)}</b><p>${escapeHtml(legend.description)}</p><div class="legend-strength" aria-label="Dificultad ${legend.level} de ${LEGENDS.length}">${LEGENDS.map((_, index) => `<i class="${index < legend.level ? "is-filled" : ""}"></i>`).join("")}</div></div>
-    <div class="legend-road-action"><span>${defeated ? "✓ Superado" : unlocked ? `${legend.rating.toLocaleString("es-DO")} fuerza` : "Bloqueado"}</span>${unlocked ? `<button class="button ${legend.level === LEGENDS.length ? "button--legend" : "button--outline"} button--small" type="button" data-play-legend="${legend.key}">${defeated ? "Jugar de nuevo" : "Desafiar"}</button>` : `<i aria-label="Nivel bloqueado">🔒</i>`}</div>
+    <div class="legend-road-action"><span>${defeated ? "✓ Superado" : unlocked ? `${legend.rating.toLocaleString(localeCode())} fuerza` : "Bloqueado"}</span>${unlocked ? `<button class="button ${legend.level === LEGENDS.length ? "button--legend" : "button--outline"} button--small" type="button" data-play-legend="${legend.key}">${defeated ? "Jugar de nuevo" : "Desafiar"}</button>` : `<i aria-label="Nivel bloqueado">🔒</i>`}</div>
     <span class="legend-road-connector" aria-hidden="true"></span>
   </article>`;
 }
@@ -3383,9 +3468,9 @@ function spectatorCardMarkup(game: SpectatorGameSummary) {
   return `<article class="live-game-card">
     <header><span class="live-badge"><i></i> EN DIRECTO</span><span>${icon("eye")} <b>${game.spectatorCount}</b></span></header>
     <div class="live-players">
-      ${playerProfileButton(ivory, `${avatarMarkup(ivory, "avatar avatar--live")}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><span class="live-player-name"><b>${escapeHtml(ivory.name)}</b>${worldTrophyMarkup(ivory)}</span><em>${ivory.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}`)}
+      ${playerProfileButton(ivory, `${avatarMarkup(ivory, "avatar avatar--live")}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><span class="live-player-name"><b>${escapeHtml(ivory.name)}</b>${worldTrophyMarkup(ivory)}</span><em>${ivory.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}`)}
       <span class="live-versus">VS</span>
-      ${playerProfileButton(mahogany, `${avatarMarkup(mahogany, "avatar avatar--live")}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><span class="live-player-name"><b>${escapeHtml(mahogany.name)}</b>${worldTrophyMarkup(mahogany)}</span><em>${mahogany.rating.rating.toLocaleString("es-DO")} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}`)}
+      ${playerProfileButton(mahogany, `${avatarMarkup(mahogany, "avatar avatar--live")}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><span class="live-player-name"><b>${escapeHtml(mahogany.name)}</b>${worldTrophyMarkup(mahogany)}</span><em>${mahogany.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}`)}
     </div>
     <div class="live-game-facts"><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Turno</small><b>${escapeHtml(currentName)}</b></span></div>
     <button class="button button--primary" type="button" data-watch-game="${game.id}">${icon("eye")} Ver partida</button>
@@ -3938,7 +4023,9 @@ function mountGame(initialGame: Game) {
   const handleBeforeUnload = (event: BeforeUnloadEvent) => {
     if (game.status !== "active" || exitRequestInFlight) return;
     event.preventDefault();
-    event.returnValue = "La partida continuará activa y volverás a ella al regresar.";
+    event.returnValue = translateText(
+      "La partida continuará activa y volverás a ella al regresar.",
+    );
   };
   window.addEventListener("beforeunload", handleBeforeUnload);
   const openChat = () => {
@@ -3973,7 +4060,7 @@ function mountGame(initialGame: Game) {
       container.innerHTML = `<div class="chat-placeholder">Aún no hay mensajes.<br>Saluda a tu rival.</div>`;
       return;
     }
-    container.innerHTML = messages.map((message) => `<div class="chat-message ${message.senderId === currentUser?.id || message.own ? "is-mine" : ""}"><small><button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(message.username)}">@${escapeHtml(message.username)}</button></small><p>${escapeHtml(message.message)}</p><time>${new Date(message.sentAt).toLocaleTimeString("es-DO", { hour: "2-digit", minute: "2-digit" })}</time></div>`).join("");
+    container.innerHTML = messages.map((message) => `<div class="chat-message ${message.senderId === currentUser?.id || message.own ? "is-mine" : ""}"><small><button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(message.username)}">@${escapeHtml(message.username)}</button></small><p>${escapeHtml(message.message)}</p><time>${new Date(message.sentAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></div>`).join("");
     container.scrollTop = container.scrollHeight;
   };
 
@@ -4320,12 +4407,41 @@ async function handleHashChange() {
   if (currentUser) void checkIncomingChallenges();
 }
 
+async function handleAppLanguageChange(event: Event) {
+  const language = (event as CustomEvent<{ language?: AppLanguage }>).detail
+    ?.language;
+  if (!language || !currentUser) return;
+  currentUser = { ...currentUser, language };
+  const rendering = renderRoute();
+  const saving = languageSaveQueue.then(async () => {
+    await api.updateLanguage(language);
+  });
+  languageSaveQueue = saving.catch(() => {});
+  try {
+    await saving;
+  } catch (error) {
+    console.warn("No se pudo guardar la preferencia de idioma.", error);
+    toast(
+      "El idioma cambió en este dispositivo, pero no pudimos guardarlo en tu cuenta.",
+      "error",
+    );
+  }
+  await rendering;
+}
+
 export async function startApp(user: User | null) {
+  if (user?.language) useUserLanguage(user.language);
   currentUser = user;
   bindPlayerProfileNavigation();
   if (!routeListenerBound) {
     window.addEventListener("hashchange", () => void handleHashChange());
     routeListenerBound = true;
+  }
+  if (!languageListenerBound) {
+    window.addEventListener(LANGUAGE_CHANGE_EVENT, (event) => {
+      void handleAppLanguageChange(event);
+    });
+    languageListenerBound = true;
   }
   if (currentUser) {
     setSessionHint(true);

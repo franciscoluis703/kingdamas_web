@@ -1,5 +1,6 @@
 import type { EloTierLabel } from "./eloTiers";
 import type { LegendDifficultyKey } from "./game/legends";
+import type { AppLanguage } from "./i18n";
 
 export type Side = "ivory" | "mahogany";
 export type GameStatus = "active" | "completed" | "cancelled";
@@ -16,6 +17,7 @@ export interface User {
   username: string;
   email?: string;
   countryCode: string;
+  language?: AppLanguage;
   memberSince?: string | null;
   avatarUrl?: string | null;
   avatarVersion?: string | null;

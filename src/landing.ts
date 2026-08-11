@@ -1,6 +1,7 @@
 import { api, ApiError } from "./api";
 import type { User } from "./types";
 import { icon } from "./ui";
+import { languageSelectorMarkup, localeCode } from "./i18n";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -18,6 +19,7 @@ function publicHeader() {
       <button class="brand brand--button" type="button" data-public-home aria-label="Ir al inicio">${logoMarkup()}</button>
       <nav class="public-nav" aria-label="Navegación principal">
         <a href="#como-jugar">Cómo jugar</a>
+        ${languageSelectorMarkup("language-selector--public")}
         <button class="button button--quiet" type="button" data-open-auth="login">Entrar</button>
         <button class="button button--primary button--small" type="button" data-open-auth="register">Crear cuenta</button>
       </nav>
@@ -194,7 +196,7 @@ export function renderPublicLanding(onAuthenticated: (user: User) => Promise<voi
           <div class="hero-board-wrap" aria-hidden="true">
             <div class="hero-glow"></div>
             <div class="mini-board">${decorativeBoard()}</div>
-            <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>1,428 <i>+18</i></b></div>
+            <div class="floating-card floating-card--rating"><span>${icon("ranking")}</span><small>Elo Damas</small><b>${(1428).toLocaleString(localeCode())} <i>+18</i></b></div>
             <div class="floating-card floating-card--clock"><span>${icon("clock")}</span><b>10:00</b><small>Partida rápida</small></div>
           </div>
         </section>
