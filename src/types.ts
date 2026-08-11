@@ -275,7 +275,23 @@ export interface QualifierBracketResponse {
         opponent: QualifierBracketPlayer | null;
         scheduledAt: string | null;
         waitingForOpponent: boolean;
-      };
+  };
+}
+
+export interface PlayerMatchHistoryEntry {
+  id: string;
+  boardSize: 10;
+  result: "win" | "loss" | "draw";
+  ratingBefore: number;
+  ratingAfter: number;
+  ratingChange: number;
+  createdAt: string;
+  opponentName: string;
+  opponentUsername: string;
+  opponentCountryCode: string;
+  durationSeconds: number;
+  timeControlMinutes: number;
+  endReason: "board" | "resignation" | "timeout" | "agreement" | "withdrawal" | null;
 }
 
 export interface PlayerStatisticsResponse {
@@ -301,6 +317,7 @@ export interface PlayerStatisticsResponse {
     countryPosition: number | null;
     winRate: number;
   }>;
+  recentGames: PlayerMatchHistoryEntry[];
 }
 
 export interface MatchmakingWaiting {

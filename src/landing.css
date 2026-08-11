@@ -109,6 +109,16 @@ a { color: inherit; text-decoration: none; }
 .auth-form input:focus, .auth-form select:focus { outline: 0; border-color: #1e9d69; box-shadow: 0 0 0 3px rgba(31,155,105,.12); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .form-error { min-height: 18px; margin: -5px 0; color: #b63e31; font-size: 13px; }
+.auth-forgot-password, .auth-back-login { width: max-content; padding: 0; color: #247657; border: 0; background: transparent; cursor: pointer; font-size: 12px; font-weight: 800; }
+.auth-forgot-password { justify-self: end; margin-top: -8px; }
+.auth-forgot-password:hover, .auth-back-login:hover { color: #109263; text-decoration: underline; text-underline-offset: 3px; }
+.auth-recovery-fields { display: grid; gap: 16px; }
+.auth-back-login { justify-self: center; margin-top: -2px; }
+.auth-recovery-success { min-height: 275px; display: grid; place-content: center; justify-items: center; text-align: center; }
+.auth-recovery-success[hidden] { display: none; }
+.auth-recovery-success > span { width: 58px; height: 58px; margin-bottom: 16px; display: grid; place-items: center; color: #fff; border-radius: 50%; background: #16865d; font: 900 24px var(--font-display); box-shadow: 0 12px 28px rgba(22,134,93,.2); }
+.auth-recovery-success h2 { margin: 0 0 7px; color: #13241c; font-size: 26px; }
+.auth-recovery-success p { max-width: 330px; margin: 0 0 21px; color: #6e7a73; font-size: 13px; line-height: 1.55; }
 .loading-state { min-height: 65vh; display: grid; place-content: center; justify-items: center; text-align: center; }
 .loading-state p { color: #72877c; }
 .loader { width: 40px; height: 40px; margin-bottom: 15px; border: 3px solid rgba(53,211,148,.16); border-top-color: var(--green-bright); border-radius: 50%; animation: spin .8s linear infinite; }

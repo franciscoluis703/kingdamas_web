@@ -49,6 +49,31 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const json = (value: unknown) => JSON.stringify(value);
 
+const responseCache = new Map<string, {
+  expiresAt: number;
+  promise: Promise<unknown>;
+}>();
+
+function cachedRequest<T>(key: string, ttlMs: number, load: () => Promise<T>) {
+  const cached = responseCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.promise as Promise<T>;
+  }
+
+  const promise = load().catch((error) => {
+    if (responseCache.get(key)?.promise === promise) responseCache.delete(key);
+    throw error;
+  });
+  responseCache.set(key, { expiresAt: Date.now() + ttlMs, promise });
+  return promise;
+}
+
+function invalidateCachedRequests(prefix: string) {
+  for (const key of responseCache.keys()) {
+    if (key.startsWith(prefix)) responseCache.delete(key);
+  }
+}
+
 export const api = {
   me: () => request<{ user: User }>("/auth/me"),
   login: (identifier: string, password: string) =>
@@ -66,6 +91,21 @@ export const api = {
     request<{ user: User }>("/auth/register", {
       method: "POST",
       body: json(data),
+    }),
+  forgotPassword: (email: string) =>
+    request<{ message: string }>("/auth/forgot-password", {
+      method: "POST",
+      body: json({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    request<{ message: string }>("/auth/reset-password", {
+      method: "POST",
+      body: json({ token, password }),
+    }),
+  deleteAccount: (password: string) =>
+    request<void>("/auth/account", {
+      method: "DELETE",
+      body: json({ password }),
     }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   updateAvatar: (file: File) =>
@@ -99,7 +139,8 @@ export const api = {
   searchUsers: (query: string) =>
     request<{ users: User[] }>(`/users/search?q=${encodeURIComponent(query)}`),
   communityStats: () =>
-    request<{ registeredUsers: number }>("/community/stats"),
+    cachedRequest("community-stats", 60_000, () =>
+      request<{ registeredUsers: number }>("/community/stats")),
   machineProgress: () =>
     request<{ progress: Record<string, MachineProgress> }>("/machine-progress"),
   recordMachineWin: (difficultyKey: string) =>
@@ -108,17 +149,22 @@ export const api = {
       body: json({ boardSize: 10, difficultyKey }),
     }),
   following: (username: string) =>
-    request<{ users: User[] }>(
-      `/users/${encodeURIComponent(username)}/following`,
-    ),
-  follow: (username: string) =>
-    request<void>(`/users/${encodeURIComponent(username)}/follow`, {
+    cachedRequest(`following:${username.toLowerCase()}`, 20_000, () =>
+      request<{ users: User[] }>(
+        `/users/${encodeURIComponent(username)}/following`,
+      )),
+  follow: async (username: string) => {
+    await request<void>(`/users/${encodeURIComponent(username)}/follow`, {
       method: "POST",
-    }),
-  unfollow: (username: string) =>
-    request<void>(`/users/${encodeURIComponent(username)}/follow`, {
+    });
+    invalidateCachedRequests("following:");
+  },
+  unfollow: async (username: string) => {
+    await request<void>(`/users/${encodeURIComponent(username)}/follow`, {
       method: "DELETE",
-    }),
+    });
+    invalidateCachedRequests("following:");
+  },
   conversations: () =>
     request<{ conversations: DirectConversation[] }>("/messages"),
   directMessages: (username: string) =>
@@ -161,11 +207,12 @@ export const api = {
       "/ratings/me",
     ),
   leaderboard: (scope: "DO" | "WORLD") =>
-    request<{
-      system: string;
-      totalPlayers: number;
-      players: LeaderboardPlayer[];
-    }>(`/ratings/leaderboard?boardSize=10&country=${scope}&limit=100`),
+    cachedRequest(`leaderboard:${scope}`, 15_000, () =>
+      request<{
+        system: string;
+        totalPlayers: number;
+        players: LeaderboardPlayer[];
+      }>(`/ratings/leaderboard?boardSize=10&country=${scope}&limit=100`)),
   joinMatchmaking: (timeControlMinutes: number) =>
     request<MatchmakingResult>("/matchmaking/join", {
       method: "POST",
@@ -250,6 +297,10 @@ export const api = {
       `/invitations/${encodeURIComponent(id)}/accept`,
       { method: "POST" },
     ),
+  declineInvitation: (id: string) =>
+    request<void>(`/invitations/${encodeURIComponent(id)}/decline`, {
+      method: "POST",
+    }),
   cancelInvitation: (id: string) =>
     request<void>(`/invitations/${encodeURIComponent(id)}/cancel`, {
       method: "POST",

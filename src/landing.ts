@@ -48,8 +48,22 @@ function authDialogMarkup() {
         <div class="form-intro"><h2>Qué bueno verte</h2><p>Entra y vuelve a tu próxima jugada.</p></div>
         <label>Usuario o correo<input name="identifier" autocomplete="username" required placeholder="tu_usuario" /></label>
         <label>Contraseña<input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" /></label>
+        <button class="auth-forgot-password" type="button" data-forgot-password>¿Olvidaste tu contraseña?</button>
         <p class="form-error" aria-live="polite"></p>
         <button class="button button--primary button--wide" type="submit">Entrar a la mesa</button>
+      </form>
+      <form class="auth-form is-hidden" data-auth-form="forgot">
+        <div class="auth-recovery-fields" data-forgot-fields>
+          <div class="form-intro"><h2>Recupera tu acceso</h2><p>Escribe el correo de tu cuenta y te enviaremos un enlace válido durante una hora.</p></div>
+          <label>Correo electrónico<input name="email" type="email" autocomplete="email" required placeholder="tu@correo.com" /></label>
+          <p class="form-error" aria-live="polite"></p>
+          <button class="button button--primary button--wide" type="submit">Enviar enlace</button>
+          <button class="auth-back-login" type="button" data-auth-back="login">← Volver a iniciar sesión</button>
+        </div>
+        <div class="auth-recovery-success" data-forgot-success hidden>
+          <span>✓</span><h2>Revisa tu correo</h2><p data-forgot-success-message></p>
+          <button class="button button--primary button--wide" type="button" data-auth-back="login">Volver a iniciar sesión</button>
+        </div>
       </form>
       <form class="auth-form is-hidden" data-auth-form="register">
         <div class="form-intro"><h2>Únete a la mesa</h2><p>Crea tu perfil para competir en 10×10.</p></div>
@@ -74,7 +88,7 @@ function errorMessage(error: unknown) {
 function bindAuthDialog(onAuthenticated: (user: User) => Promise<void>) {
   const dialog = root.querySelector<HTMLDialogElement>(".auth-dialog");
   if (!dialog) return;
-  const setTab = (tab: "login" | "register") => {
+  const setTab = (tab: "login" | "register" | "forgot") => {
     dialog.querySelectorAll<HTMLElement>("[data-auth-tab]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.authTab === tab);
     });
@@ -99,19 +113,38 @@ function bindAuthDialog(onAuthenticated: (user: User) => Promise<void>) {
   dialog.querySelectorAll<HTMLButtonElement>("[data-auth-tab]").forEach((button) => {
     button.addEventListener("click", () => setTab(button.dataset.authTab as "login" | "register"));
   });
+  dialog.querySelector("[data-forgot-password]")?.addEventListener("click", () => setTab("forgot"));
+  dialog.querySelectorAll("[data-auth-back=login]").forEach((button) => {
+    button.addEventListener("click", () => setTab("login"));
+  });
   dialog.querySelectorAll<HTMLFormElement>(".auth-form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const mode = form.dataset.authForm;
       const submit = form.querySelector<HTMLButtonElement>("[type=submit]");
       const error = form.querySelector<HTMLElement>(".form-error");
       const data = new FormData(form);
       if (submit) {
         submit.disabled = true;
-        submit.textContent = "Entrando…";
+        submit.textContent = mode === "forgot"
+          ? "Enviando…"
+          : mode === "login"
+            ? "Entrando…"
+            : "Creando cuenta…";
       }
       if (error) error.textContent = "";
       try {
-        const response = form.dataset.authForm === "login"
+        if (mode === "forgot") {
+          const result = await api.forgotPassword(String(data.get("email")));
+          const fields = form.querySelector<HTMLElement>("[data-forgot-fields]");
+          const success = form.querySelector<HTMLElement>("[data-forgot-success]");
+          const message = form.querySelector<HTMLElement>("[data-forgot-success-message]");
+          if (fields) fields.hidden = true;
+          if (success) success.hidden = false;
+          if (message) message.textContent = result.message;
+          return;
+        }
+        const response = mode === "login"
           ? await api.login(String(data.get("identifier")), String(data.get("password")))
           : await api.register({
               name: String(data.get("name")),
@@ -127,7 +160,11 @@ function bindAuthDialog(onAuthenticated: (user: User) => Promise<void>) {
       } finally {
         if (submit) {
           submit.disabled = false;
-          submit.textContent = form.dataset.authForm === "login" ? "Entrar a la mesa" : "Crear mi cuenta";
+          submit.textContent = mode === "forgot"
+            ? "Enviar enlace"
+            : mode === "login"
+              ? "Entrar a la mesa"
+              : "Crear mi cuenta";
         }
       }
     });

@@ -33,7 +33,8 @@ function launchApp(user: User | null) {
 
 async function bootstrap() {
   const sharedInvitation = new URLSearchParams(window.location.search).has("invitacion");
-  const optimisticLanding = !hasSessionHint() && !sharedInvitation;
+  const passwordReset = window.location.pathname.replace(/\/+$/, "") === "/restablecer";
+  const optimisticLanding = !hasSessionHint() && !sharedInvitation && !passwordReset;
   if (optimisticLanding) renderPublicLanding(launchApp);
   else root.innerHTML = `<div class="loading-state"><span class="loader"></span><p>Preparando la mesa…</p></div>`;
 
@@ -44,7 +45,7 @@ async function bootstrap() {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) setSessionHint(false);
     else console.warn("No se pudo recuperar la sesión.", error);
-    if (sharedInvitation) await launchApp(null);
+    if (sharedInvitation || passwordReset) await launchApp(null);
     else if (!optimisticLanding) renderPublicLanding(launchApp);
   }
 }

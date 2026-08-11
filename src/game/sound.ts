@@ -54,8 +54,7 @@ let backgroundRequested = false;
 let unlockListenersAttached = false;
 let interfaceSoundsInstalled = false;
 let lastInterfaceSoundAt = 0;
-const effectPools = new Map<string, HTMLAudioElement[]>();
-const effectIndexes = new Map<string, number>();
+const effects = new Map<string, HTMLAudioElement>();
 
 function stored(key: string, fallback: boolean) {
   const value = localStorage.getItem(key);
@@ -78,7 +77,7 @@ function createBackgroundTrack() {
   if (backgroundTrack) return backgroundTrack;
   backgroundTrack = new Audio(BACKGROUND_TRACK_URL);
   backgroundTrack.loop = true;
-  backgroundTrack.preload = "auto";
+  backgroundTrack.preload = "none";
   backgroundTrack.volume = storedBackgroundVolume();
   return backgroundTrack;
 }
@@ -114,25 +113,18 @@ function unlockBackground() {
   void tryBackgroundPlayback();
 }
 
-function effectPool(url: string, volume: number) {
-  const existing = effectPools.get(url);
+function effect(url: string, volume: number) {
+  const existing = effects.get(url);
   if (existing) return existing;
-  const pool = Array.from({ length: 6 }, () => {
-    const sound = new Audio(url);
-    sound.preload = "auto";
-    sound.volume = volume;
-    return sound;
-  });
-  effectPools.set(url, pool);
-  effectIndexes.set(url, 0);
-  return pool;
+  const sound = new Audio(url);
+  sound.preload = "none";
+  sound.volume = volume;
+  effects.set(url, sound);
+  return sound;
 }
 
 function playEffect(url: string, volume: number) {
-  const pool = effectPool(url, volume);
-  const index = effectIndexes.get(url) || 0;
-  const sound = pool[index]!;
-  effectIndexes.set(url, (index + 1) % pool.length);
+  const sound = effect(url, volume);
   sound.pause();
   sound.currentTime = 0;
   void sound.play().catch(() => {});
@@ -161,7 +153,6 @@ function handleInterfaceClick(event: MouseEvent) {
 export function installInterfaceSounds() {
   if (interfaceSoundsInstalled) return;
   interfaceSoundsInstalled = true;
-  effectPool(INTERFACE_SOUND_URL, INTERFACE_EFFECT_VOLUME);
   document.addEventListener("click", handleInterfaceClick, true);
 }
 
@@ -187,9 +178,6 @@ export function playMoveSound(captures: boolean | number = 0) {
 
 export function startBackgroundSound() {
   backgroundRequested = true;
-  effectPool(INTERFACE_SOUND_URL, INTERFACE_EFFECT_VOLUME);
-  effectPool(MOVE_SOUND_URL, MOVE_EFFECT_VOLUME);
-  effectPool(CAPTURE_SOUND_URL, CAPTURE_EFFECT_VOLUME);
   if (!stored(BACKGROUND_SOUND_KEY, DEFAULT_BACKGROUND_SOUND)) return;
   void tryBackgroundPlayback();
 }

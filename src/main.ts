@@ -36,6 +36,7 @@ import type {
   LegalMove,
   LinkInvitation,
   MatchmakingResult,
+  PlayerMatchHistoryEntry,
   QualifierBracketMatch,
   QualifierBracketPlayer,
   QualifierBracketResponse,
@@ -88,6 +89,11 @@ let linkInvitationTimer: number | null = null;
 let currentRating: Rating | null = null;
 let paypalSdkPromise: Promise<PayPalNamespace> | null = null;
 let socketIoPromise: Promise<typeof import("socket.io-client")> | null = null;
+let outgoingChallengeDialog: HTMLDialogElement | null = null;
+let outgoingChallengeTimer: number | null = null;
+let incomingChallengeDialog: HTMLDialogElement | null = null;
+let incomingChallengeId: string | null = null;
+let incomingChallengeCheckRunning = false;
 
 const LEGAL_CONSENT_VERSION = "2026-08-09";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -243,6 +249,7 @@ function bindNavigation() {
     root.querySelector(".sidebar")?.classList.toggle("is-open");
   });
   bindProfilePhotoDialog();
+  bindAccountDeletionDialog();
   bindLegalConsent();
 }
 
@@ -426,6 +433,22 @@ function profilePhotoDialogMarkup() {
         <button class="button button--primary" type="button" data-save-profile-photo disabled>Guardar foto</button>
       </div>
       <button class="text-button text-button--danger profile-photo-remove" type="button" data-remove-profile-photo ${currentUser.avatarUrl ? "" : "hidden"}>Eliminar foto actual</button>
+      <details class="account-management">
+        <summary>Administrar cuenta</summary>
+        <div><small>ZONA SENSIBLE</small><p>Opciones permanentes relacionadas con tu cuenta.</p><button type="button" data-open-delete-account>Eliminar cuenta</button></div>
+      </details>
+    </dialog>
+    <dialog class="delete-account-dialog" aria-labelledby="delete-account-title">
+      <button class="dialog-close" type="button" data-close-delete-account aria-label="Cerrar">×</button>
+      <span class="delete-account-symbol">!</span>
+      <span class="section-kicker">ACCIÓN IRREVERSIBLE</span>
+      <h2 id="delete-account-title">Eliminar tu cuenta</h2>
+      <p>Tu perfil y los datos asociados se eliminarán permanentemente. Algunos resultados históricos pueden conservar el nombre registrado para mantener la integridad competitiva.</p>
+      <form class="delete-account-form" data-delete-account-form>
+        <label>Confirma con tu contraseña<input name="password" type="password" autocomplete="current-password" required placeholder="Tu contraseña actual" /></label>
+        <p class="delete-account-error" data-delete-account-error aria-live="polite"></p>
+        <div><button class="button button--quiet" type="button" data-close-delete-account>Cancelar</button><button class="button button--danger" type="submit">Eliminar definitivamente</button></div>
+      </form>
     </dialog>`;
 }
 
@@ -537,6 +560,67 @@ function bindProfilePhotoDialog() {
   dialog.addEventListener("close", clearPreviewUrl);
 }
 
+function bindAccountDeletionDialog() {
+  const dialog = root.querySelector<HTMLDialogElement>(".delete-account-dialog");
+  const form = dialog?.querySelector<HTMLFormElement>("[data-delete-account-form]");
+  const password = form?.querySelector<HTMLInputElement>('input[name="password"]');
+  const error = form?.querySelector<HTMLElement>("[data-delete-account-error]");
+  const submit = form?.querySelector<HTMLButtonElement>('[type="submit"]');
+  if (!dialog || !form || !password || !error || !submit) return;
+  const originalSubmitText = submit.textContent || "Eliminar definitivamente";
+  const close = () => {
+    if (dialog.open) dialog.close();
+  };
+  const reset = () => {
+    form.reset();
+    error.textContent = "";
+    submit.disabled = false;
+    submit.textContent = originalSubmitText;
+  };
+
+  root.querySelector("[data-open-delete-account]")?.addEventListener("click", () => {
+    root.querySelector<HTMLDialogElement>(".profile-photo-dialog")?.close();
+    reset();
+    dialog.showModal();
+    window.setTimeout(() => password.focus(), 0);
+  });
+  dialog.querySelectorAll("[data-close-delete-account]").forEach((button) => {
+    button.addEventListener("click", close);
+  });
+  dialog.addEventListener("click", (event) => {
+    if (event.target === dialog) close();
+  });
+  dialog.addEventListener("close", reset);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const confirmation = password.value;
+    if (!confirmation) {
+      error.textContent = "Escribe tu contraseña para continuar.";
+      password.focus();
+      return;
+    }
+    error.textContent = "";
+    submit.disabled = true;
+    submit.textContent = "Eliminando cuenta…";
+    try {
+      await api.deleteAccount(confirmation);
+      close();
+      currentUser = null;
+      currentRating = null;
+      setSessionHint(false);
+      socket?.disconnect();
+      socket = null;
+      navigate("/inicio");
+      toast("Tu cuenta fue eliminada permanentemente.");
+    } catch (requestError) {
+      error.textContent = errorMessage(requestError);
+      submit.disabled = false;
+      submit.textContent = originalSubmitText;
+      password.select();
+    }
+  });
+}
+
 function loadingMarkup(message = "Preparando la mesa…") {
   return `<div class="loading-state"><span class="loader"></span><p>${escapeHtml(message)}</p></div>`;
 }
@@ -585,6 +669,98 @@ function renderLanding() {
   bindAuthDialog();
 }
 
+function isPasswordResetPath() {
+  return window.location.pathname.replace(/\/+$/, "") === "/restablecer";
+}
+
+function passwordResetToken() {
+  return new URLSearchParams(window.location.search).get("token")?.trim() || "";
+}
+
+function clearPasswordResetUrl() {
+  const url = new URL(window.location.href);
+  url.pathname = "/";
+  url.search = "";
+  url.hash = "/inicio";
+  window.history.replaceState(window.history.state, "", url);
+}
+
+async function leavePasswordReset(openRecovery = false) {
+  clearPasswordResetUrl();
+  await renderRoute();
+  if (!openRecovery || currentUser) return;
+  root.querySelector<HTMLButtonElement>('[data-open-auth="login"]')?.click();
+  root.querySelector<HTMLButtonElement>("[data-forgot-password]")?.click();
+}
+
+function renderPasswordReset(token: string) {
+  const available = Boolean(token);
+  root.innerHTML = `
+    <div class="landing password-reset-landing">
+      ${publicHeader()}
+      <main class="password-reset-page">
+        <section class="password-reset-card">
+          <span class="password-reset-seal">${icon("crown")}</span>
+          <span class="section-kicker">SEGURIDAD DE TU CUENTA</span>
+          <h1>${available ? "Crea una nueva contraseña" : "Enlace no disponible"}</h1>
+          <p>${available
+            ? "Elige una contraseña segura de al menos 8 caracteres, con una letra y un número."
+            : "Este enlace de recuperación no incluye un token válido. Solicita uno nuevo para continuar."}</p>
+          ${available ? `<form class="password-reset-form" data-password-reset-form>
+            <label>Nueva contraseña<input name="password" type="password" autocomplete="new-password" minlength="8" required placeholder="8 caracteres, una letra y un número" /></label>
+            <label>Confirmar contraseña<input name="confirmation" type="password" autocomplete="new-password" minlength="8" required placeholder="Repite tu contraseña" /></label>
+            <p class="form-error" data-password-reset-error aria-live="polite"></p>
+            <button class="button button--primary button--wide" type="submit">Actualizar contraseña</button>
+          </form>` : `<button class="button button--primary button--wide" type="button" data-request-new-reset>Solicitar un nuevo enlace</button>`}
+          <button class="password-reset-home" type="button" data-password-reset-home>← Volver al inicio</button>
+        </section>
+      </main>
+      ${authDialogMarkup()}
+    </div>`;
+
+  root.querySelector<HTMLElement>(".public-header [data-route]")?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    void leavePasswordReset();
+  }, { capture: true });
+  bindNavigation();
+  bindAuthDialog();
+  root.querySelector("[data-password-reset-home]")?.addEventListener("click", () => void leavePasswordReset());
+  root.querySelector("[data-request-new-reset]")?.addEventListener("click", () => void leavePasswordReset(true));
+
+  const form = root.querySelector<HTMLFormElement>("[data-password-reset-form]");
+  form?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const submit = form.querySelector<HTMLButtonElement>("[type=submit]");
+    const error = form.querySelector<HTMLElement>("[data-password-reset-error]");
+    const data = new FormData(form);
+    const password = String(data.get("password") || "");
+    const confirmation = String(data.get("confirmation") || "");
+    if (error) error.textContent = "";
+    if (password !== confirmation) {
+      if (error) error.textContent = "Las contraseñas no coinciden.";
+      return;
+    }
+    if (submit) {
+      submit.disabled = true;
+      submit.textContent = "Actualizando…";
+    }
+    try {
+      const result = await api.resetPassword(token, password);
+      const card = root.querySelector<HTMLElement>(".password-reset-card");
+      if (!card) return;
+      card.innerHTML = `<span class="password-reset-success">✓</span><span class="section-kicker">CONTRASEÑA ACTUALIZADA</span><h1>Tu acceso está listo</h1><p>${escapeHtml(result.message)} Ya puedes entrar con tu nueva contraseña.</p><button class="button button--primary button--wide" type="button" data-reset-complete>${currentUser ? "Ir al inicio" : "Iniciar sesión"}</button>`;
+      card.querySelector("[data-reset-complete]")?.addEventListener("click", () => void leavePasswordReset(!currentUser));
+    } catch (requestError) {
+      if (error) error.textContent = errorMessage(requestError);
+      if (submit) {
+        submit.disabled = false;
+        submit.textContent = "Actualizar contraseña";
+      }
+    }
+  });
+}
+
 function decorativeBoard() {
   return Array.from({ length: 100 }, (_, index) => {
     const row = Math.floor(index / 10);
@@ -609,8 +785,22 @@ function authDialogMarkup() {
         <div class="form-intro"><h2>Qué bueno verte</h2><p>Entra y vuelve a tu próxima jugada.</p></div>
         <label>Usuario o correo<input name="identifier" autocomplete="username" required placeholder="tu_usuario" /></label>
         <label>Contraseña<input name="password" type="password" autocomplete="current-password" required placeholder="••••••••" /></label>
+        <button class="auth-forgot-password" type="button" data-forgot-password>¿Olvidaste tu contraseña?</button>
         <p class="form-error" aria-live="polite"></p>
         <button class="button button--primary button--wide" type="submit">Entrar a la mesa</button>
+      </form>
+      <form class="auth-form is-hidden" data-auth-form="forgot">
+        <div class="auth-recovery-fields" data-forgot-fields>
+          <div class="form-intro"><h2>Recupera tu acceso</h2><p>Escribe el correo de tu cuenta y te enviaremos un enlace válido durante una hora.</p></div>
+          <label>Correo electrónico<input name="email" type="email" autocomplete="email" required placeholder="tu@correo.com" /></label>
+          <p class="form-error" aria-live="polite"></p>
+          <button class="button button--primary button--wide" type="submit">Enviar enlace</button>
+          <button class="auth-back-login" type="button" data-auth-back="login">← Volver a iniciar sesión</button>
+        </div>
+        <div class="auth-recovery-success" data-forgot-success hidden>
+          <span>✓</span><h2>Revisa tu correo</h2><p data-forgot-success-message></p>
+          <button class="button button--primary button--wide" type="button" data-auth-back="login">Volver a iniciar sesión</button>
+        </div>
       </form>
       <form class="auth-form is-hidden" data-auth-form="register">
         <div class="form-intro"><h2>Únete a la mesa</h2><p>Crea tu perfil para competir en 10×10.</p></div>
@@ -630,7 +820,7 @@ function authDialogMarkup() {
 function bindAuthDialog() {
   const dialog = root.querySelector<HTMLDialogElement>(".auth-dialog");
   if (!dialog) return;
-  const setTab = (tab: "login" | "register") => {
+  const setTab = (tab: "login" | "register" | "forgot") => {
     dialog.querySelectorAll<HTMLElement>("[data-auth-tab]").forEach((button) => {
       button.classList.toggle("is-active", button.dataset.authTab === tab);
     });
@@ -651,16 +841,38 @@ function bindAuthDialog() {
   dialog.querySelectorAll<HTMLButtonElement>("[data-auth-tab]").forEach((button) => {
     button.addEventListener("click", () => setTab(button.dataset.authTab as "login" | "register"));
   });
+  dialog.querySelector("[data-forgot-password]")?.addEventListener("click", () => setTab("forgot"));
+  dialog.querySelectorAll("[data-auth-back=login]").forEach((button) => {
+    button.addEventListener("click", () => setTab("login"));
+  });
   dialog.querySelectorAll<HTMLFormElement>(".auth-form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
+      const mode = form.dataset.authForm;
       const submit = form.querySelector<HTMLButtonElement>("[type=submit]");
       const error = form.querySelector<HTMLElement>(".form-error");
       const data = new FormData(form);
-      if (submit) { submit.disabled = true; submit.textContent = "Entrando…"; }
+      if (submit) {
+        submit.disabled = true;
+        submit.textContent = mode === "forgot"
+          ? "Enviando…"
+          : mode === "login"
+            ? "Entrando…"
+            : "Creando cuenta…";
+      }
       if (error) error.textContent = "";
       try {
-        const response = form.dataset.authForm === "login"
+        if (mode === "forgot") {
+          const result = await api.forgotPassword(String(data.get("email")));
+          const fields = form.querySelector<HTMLElement>("[data-forgot-fields]");
+          const success = form.querySelector<HTMLElement>("[data-forgot-success]");
+          const message = form.querySelector<HTMLElement>("[data-forgot-success-message]");
+          if (fields) fields.hidden = true;
+          if (success) success.hidden = false;
+          if (message) message.textContent = result.message;
+          return;
+        }
+        const response = mode === "login"
           ? await api.login(String(data.get("identifier")), String(data.get("password")))
           : await api.register({
               name: String(data.get("name")),
@@ -673,6 +885,7 @@ function bindAuthDialog() {
         setSessionHint(true);
         dialog.close();
         await connectRealtime();
+        if (isPasswordResetPath()) clearPasswordResetUrl();
         navigate("/inicio");
         toast(`Bienvenido, ${currentUser.name}.`);
       } catch (requestError) {
@@ -680,7 +893,11 @@ function bindAuthDialog() {
       } finally {
         if (submit) {
           submit.disabled = false;
-          submit.textContent = form.dataset.authForm === "login" ? "Entrar a la mesa" : "Crear mi cuenta";
+          submit.textContent = mode === "forgot"
+            ? "Enviar enlace"
+            : mode === "login"
+              ? "Entrar a la mesa"
+              : "Crear mi cuenta";
         }
       }
     });
@@ -1178,12 +1395,12 @@ function communityMarkup(
   return `
     <section class="page-heading community-heading">
       <div><span class="eyebrow"><i></i>JUGADORES DE KING DAMAS</span><h1>Comunidad</h1><span class="community-registered-count" aria-label="${registeredUsers.toLocaleString("es-DO")} usuarios registrados"><b>${registeredUsers.toLocaleString("es-DO")}</b></span><p>Encuentra rivales, crea tu círculo y mantén la conversación fuera del tablero.</p></div>
-      <div class="community-stats"><span><b>${totalPlayers.toLocaleString("es-DO")}</b><small>Clasificados</small></span><span><b>${friends.length}</b><small>Amigos</small></span><span><b>${conversations.reduce((total, item) => total + item.unreadCount, 0)}</b><small>Sin leer</small></span></div>
+      <div class="community-stats"><span><b>${totalPlayers.toLocaleString("es-DO")}</b><small>Clasificados</small></span><span><b data-community-friend-count>${friends.length}</b><small>Amigos</small></span><span><b data-community-unread-count>${conversations.reduce((total, item) => total + item.unreadCount, 0)}</b><small>Sin leer</small></span></div>
     </section>
     <label class="community-search"><span>${icon("search")}</span><input type="search" autocomplete="off" minlength="2" maxlength="60" placeholder="Buscar por nombre o @usuario…" data-community-search /><kbd>Buscar</kbd></label>
     <div class="community-grid">
       <section class="panel community-panel community-friends">
-        <div class="community-panel-heading"><span><small>TU CÍRCULO</small><h2>Amigos</h2></span><b>${friends.length}</b></div>
+        <div class="community-panel-heading"><span><small>TU CÍRCULO</small><h2>Amigos</h2></span><b data-community-friend-count>${friends.length}</b></div>
         <div class="community-player-list" data-friends-list>
           ${friends.length ? friends.map((player) => communityPlayerMarkup(player, true, "friends")).join("") : `<div class="community-empty"><span>${icon("users")}</span><b>Tu círculo comienza aquí</b><p>Busca jugadores y agrégalos para encontrarlos rápidamente.</p></div>`}
         </div>
@@ -1195,8 +1412,8 @@ function communityMarkup(
         </div>
       </section>
       <section class="panel community-panel community-conversations">
-        <div class="community-panel-heading"><span><small>MENSAJES PRIVADOS</small><h2>Conversaciones</h2></span>${conversations.some((item) => item.unreadCount) ? `<b>${conversations.reduce((total, item) => total + item.unreadCount, 0)} nuevos</b>` : ""}</div>
-        <div class="conversation-list">
+        <div class="community-panel-heading"><span><small>MENSAJES PRIVADOS</small><h2>Conversaciones</h2></span><b data-conversation-unread-label ${conversations.some((item) => item.unreadCount) ? "" : "hidden"}>${conversations.reduce((total, item) => total + item.unreadCount, 0)} nuevos</b></div>
+        <div class="conversation-list" data-conversation-list>
           ${conversations.length ? conversations.map(communityConversationMarkup).join("") : `<div class="community-empty community-empty--compact"><span>${icon("chat")}</span><b>Aún no hay mensajes</b><p>Abre una conversación desde cualquier jugador.</p></div>`}
         </div>
       </section>
@@ -1245,20 +1462,35 @@ async function renderCommunity() {
 
 function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   const search = root.querySelector<HTMLInputElement>("[data-community-search]");
+  const friendsList = root.querySelector<HTMLElement>("[data-friends-list]");
   const discoveryList = root.querySelector<HTMLElement>("[data-discovery-list]");
   const discoveryTitle = root.querySelector<HTMLElement>("[data-discovery-title]");
   const discoveryKicker = root.querySelector<HTMLElement>("[data-discovery-kicker]");
+  const conversationList = root.querySelector<HTMLElement>("[data-conversation-list]");
   const dialog = root.querySelector<HTMLDialogElement>(".direct-chat-dialog");
   const directUser = dialog?.querySelector<HTMLElement>("[data-direct-chat-user]");
   const directMessages = dialog?.querySelector<HTMLElement>("[data-direct-chat-messages]");
   const directForm = dialog?.querySelector<HTMLFormElement>("[data-direct-chat-form]");
   const directError = dialog?.querySelector<HTMLElement>("[data-direct-chat-error]");
   const friendNames = new Set(friends.map((friend) => friend.username));
+  const knownPlayers = new Map<string, User>(
+    [...friends, ...initialDiscovery].map((player) => [player.username, player]),
+  );
+  let friendList = [...friends];
+  let visibleDiscovery: Array<User & { rating?: number }> = [...initialDiscovery];
+  let discoverySearching = false;
   let searchTimer = 0;
   let searchSequence = 0;
-  let conversationTimer = 0;
   let activeUsername = "";
+  let activeMessages: DirectMessage[] = [];
   let conversationLoading = false;
+  let conversationListLoading = false;
+
+  const updateFriendCounts = () => {
+    root.querySelectorAll<HTMLElement>("[data-community-friend-count]").forEach((element) => {
+      element.textContent = String(friendList.length);
+    });
+  };
 
   const bindPlayerActions = (scope: ParentNode = root) => {
     scope.querySelectorAll<HTMLButtonElement>("[data-add-friend]").forEach((button) => {
@@ -1268,8 +1500,13 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
         try {
           await api.follow(username);
           friendNames.add(username);
+          const player = knownPlayers.get(username);
+          if (player && !friendList.some((friend) => friend.username === username)) {
+            friendList.push(player);
+          }
+          renderFriends();
+          renderDiscovery(visibleDiscovery, discoverySearching);
           toast(`@${username} fue agregado a tus amigos.`);
-          await renderCommunity();
         } catch (error) {
           button.disabled = false;
           toast(errorMessage(error), "error");
@@ -1282,8 +1519,11 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
         button.disabled = true;
         try {
           await api.unfollow(username);
+          friendNames.delete(username);
+          friendList = friendList.filter((friend) => friend.username !== username);
+          renderFriends();
+          renderDiscovery(visibleDiscovery, discoverySearching);
           toast(`@${username} fue eliminado de tus amigos.`);
-          await renderCommunity();
         } catch (error) {
           button.disabled = false;
           toast(errorMessage(error), "error");
@@ -1295,8 +1535,20 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     });
   };
 
+  const renderFriends = () => {
+    if (!friendsList) return;
+    friendsList.innerHTML = friendList.length
+      ? friendList.map((player) => communityPlayerMarkup(player, true, "friends")).join("")
+      : `<div class="community-empty"><span>${icon("users")}</span><b>Tu círculo comienza aquí</b><p>Busca jugadores y agrégalos para encontrarlos rápidamente.</p></div>`;
+    updateFriendCounts();
+    bindPlayerActions(friendsList);
+  };
+
   const renderDiscovery = (players: Array<User & { rating?: number }>, searching: boolean) => {
     if (!discoveryList) return;
+    visibleDiscovery = players;
+    discoverySearching = searching;
+    players.forEach((player) => knownPlayers.set(player.username, player));
     const visible = players.filter((player) => player.id !== currentUser?.id).slice(0, 20);
     discoveryList.innerHTML = visible.length
       ? visible.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("")
@@ -1314,6 +1566,35 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     directMessages.scrollTop = directMessages.scrollHeight;
   };
 
+  const renderConversationList = (conversations: DirectConversation[]) => {
+    if (!conversationList) return;
+    conversationList.innerHTML = conversations.length
+      ? conversations.map(communityConversationMarkup).join("")
+      : `<div class="community-empty community-empty--compact"><span>${icon("chat")}</span><b>Aún no hay mensajes</b><p>Abre una conversación desde cualquier jugador.</p></div>`;
+    const unreadCount = conversations.reduce((total, item) => total + item.unreadCount, 0);
+    const unreadStat = root.querySelector<HTMLElement>("[data-community-unread-count]");
+    const unreadLabel = root.querySelector<HTMLElement>("[data-conversation-unread-label]");
+    if (unreadStat) unreadStat.textContent = String(unreadCount);
+    if (unreadLabel) {
+      unreadLabel.hidden = unreadCount === 0;
+      unreadLabel.textContent = `${unreadCount} nuevos`;
+    }
+    bindPlayerActions(conversationList);
+  };
+
+  const refreshConversationList = async () => {
+    if (conversationListLoading) return;
+    conversationListLoading = true;
+    try {
+      const response = await api.conversations();
+      if (route() === "/comunidad") renderConversationList(response.conversations);
+    } catch {
+      // Un próximo mensaje o la siguiente visita vuelve a sincronizar la lista.
+    } finally {
+      conversationListLoading = false;
+    }
+  };
+
   const refreshConversation = async () => {
     if (!activeUsername || conversationLoading || !dialog?.open) return;
     conversationLoading = true;
@@ -1321,8 +1602,8 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
       const response = await api.directMessages(activeUsername);
       if (!dialog.open || response.user.username !== activeUsername) return;
       if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b id="direct-chat-name">${escapeHtml(response.user.name)}</b>${worldTrophyMarkup(response.user)}</span><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small>${worldTitleRecognitionMarkup(response.user, "world-title-recognition--compact")}</span>`, "direct-chat-player-profile");
-      renderDirectMessages(response.messages);
-      root.querySelector(`[data-open-conversation="${CSS.escape(activeUsername)}"] i`)?.remove();
+      activeMessages = response.messages;
+      renderDirectMessages(activeMessages);
     } catch (error) {
       if (directError) directError.textContent = errorMessage(error);
     } finally {
@@ -1331,9 +1612,8 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   };
 
   const closeConversation = () => {
-    if (conversationTimer) window.clearInterval(conversationTimer);
-    conversationTimer = 0;
     activeUsername = "";
+    activeMessages = [];
     dialog?.close();
   };
 
@@ -1345,11 +1625,28 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     if (directError) directError.textContent = "";
     if (!dialog.open) dialog.showModal();
     await refreshConversation();
-    if (conversationTimer) window.clearInterval(conversationTimer);
-    conversationTimer = window.setInterval(() => void refreshConversation(), 3500);
+    void refreshConversationList();
+  };
+
+  const receiveDirectMessage = (message: DirectMessage & {
+    sender?: { username?: string };
+  }) => {
+    const senderUsername = message.sender?.username || "";
+    if (
+      dialog?.open
+      && senderUsername === activeUsername
+      && !activeMessages.some((item) => item.id === message.id)
+    ) {
+      activeMessages.push({ ...message, own: false });
+      renderDirectMessages(activeMessages);
+      void refreshConversation().then(() => refreshConversationList());
+      return;
+    }
+    void refreshConversationList();
   };
 
   bindPlayerActions();
+  socket?.on("message:received", receiveDirectMessage);
   search?.addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);
     const query = search.value.trim();
@@ -1370,9 +1667,8 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   });
   dialog?.querySelector("[data-close-direct-chat]")?.addEventListener("click", closeConversation);
   dialog?.addEventListener("cancel", () => {
-    if (conversationTimer) window.clearInterval(conversationTimer);
-    conversationTimer = 0;
     activeUsername = "";
+    activeMessages = [];
   });
   directForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1383,9 +1679,11 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     submit?.setAttribute("disabled", "");
     if (directError) directError.textContent = "";
     try {
-      await api.sendDirectMessage(activeUsername, message);
+      const response = await api.sendDirectMessage(activeUsername, message);
+      activeMessages.push(response.message);
+      renderDirectMessages(activeMessages);
       input.value = "";
-      await refreshConversation();
+      void refreshConversationList();
     } catch (error) {
       if (directError) directError.textContent = errorMessage(error);
     } finally {
@@ -1395,7 +1693,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   });
   pageCleanup = () => {
     if (searchTimer) window.clearTimeout(searchTimer);
-    if (conversationTimer) window.clearInterval(conversationTimer);
+    socket?.off("message:received", receiveDirectMessage);
     if (dialog?.open) dialog.close();
   };
 }
@@ -1469,6 +1767,76 @@ function tournamentPlayerProfileMarkup(
   </section>`;
 }
 
+function playerMatchEndLabel(match: PlayerMatchHistoryEntry) {
+  if (match.result === "draw") {
+    return match.endReason === "agreement"
+      ? "Tablas por acuerdo"
+      : "La partida terminó en tablas";
+  }
+  if (match.endReason === "timeout") {
+    return match.result === "win"
+      ? "El rival perdió por tiempo"
+      : "Perdió por tiempo";
+  }
+  if (match.endReason === "resignation") {
+    return match.result === "win"
+      ? "El rival se rindió"
+      : "Se rindió ante el rival";
+  }
+  if (match.endReason === "withdrawal") {
+    return match.result === "win"
+      ? "El rival abandonó la partida"
+      : "Abandonó la partida";
+  }
+  return match.result === "win"
+    ? "Victoria decidida en el tablero"
+    : "Derrota decidida en el tablero";
+}
+
+function playerMatchHistoryMarkup(matches: PlayerMatchHistoryEntry[]) {
+  const history = matches.length
+    ? matches.map((match) => {
+        const resultLabel = match.result === "win"
+          ? "Venció"
+          : match.result === "loss"
+            ? "Perdió"
+            : "Tablas";
+        const versusLabel = match.result === "win"
+          ? "Venció a"
+          : match.result === "loss"
+            ? "Perdió ante"
+            : "Tablas con";
+        const date = new Date(match.createdAt);
+        const playedAt = Number.isNaN(date.getTime())
+          ? "Fecha no disponible"
+          : date.toLocaleString("es-DO", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            });
+        return `<article class="profile-match-history-item is-${match.result}">
+          <span class="profile-match-result-symbol" aria-hidden="true">${match.result === "win" ? "✓" : match.result === "loss" ? "×" : "½"}</span>
+          <div class="profile-match-history-copy">
+            <span class="profile-match-result-label">${resultLabel}</span>
+            <h3>${versusLabel} <button type="button" data-player-profile-link="${escapeHtml(match.opponentUsername)}">${flag(match.opponentCountryCode)} ${escapeHtml(match.opponentName)} <small>@${escapeHtml(match.opponentUsername)}</small></button></h3>
+            <p>${escapeHtml(playerMatchEndLabel(match))}</p>
+          </div>
+          <div class="profile-match-history-meta">
+            <time datetime="${escapeHtml(match.createdAt)}">${escapeHtml(playedAt)}</time>
+            <span>${match.timeControlMinutes} min${match.durationSeconds ? ` · ${formatDuration(match.durationSeconds)}` : ""}</span>
+          </div>
+        </article>`;
+      }).join("")
+    : `<div class="profile-match-history-empty"><span>♟</span><b>Aún no hay enfrentamientos registrados</b><p>Los resultados aparecerán aquí después de completar una partida clasificada.</p></div>`;
+
+  return `<section class="player-profile-history" aria-labelledby="player-profile-history-title">
+    <header><div><span class="section-kicker">RESULTADOS RECIENTES</span><h2 id="player-profile-history-title">Historial de enfrentamientos</h2><p>Resultados, rivales y forma de finalización. Las jugadas no se muestran.</p></div><b>${matches.length} ${matches.length === 1 ? "partida" : "partidas"}</b></header>
+    <div class="profile-match-history-list">${history}</div>
+  </section>`;
+}
+
 function playerProfilePageMarkup(
   response: Awaited<ReturnType<typeof api.playerStatistics>>,
 ) {
@@ -1490,21 +1858,40 @@ function playerProfilePageMarkup(
       <div><button class="text-button" type="button" data-route="/comunidad">← Comunidad</button><span class="eyebrow"><i></i>PERFIL DE JUGADOR</span><h1 class="profile-heading-name"><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--heading")}</h1><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)} · Damas internacionales 10×10</p></div>
       ${profile.isSelf
         ? `<button class="button button--quiet" type="button" data-open-profile-photo>${icon("camera")} Cambiar foto</button>`
-        : profile.isFollowing
-          ? `<span class="player-profile-friend">✓ En tus amigos</span>`
-          : `<button class="button button--primary" type="button" data-follow-profile="${escapeHtml(profile.username)}">${icon("userPlus")} Agregar amigo</button>`}
+        : `<div class="player-profile-actions">
+            <button class="button button--primary" type="button" data-challenge-profile="${escapeHtml(profile.username)}">${icon("play")} Desafiar a @${escapeHtml(profile.username)}</button>
+            ${profile.isFollowing
+              ? `<button class="button button--quiet player-profile-unfollow" type="button" data-unfollow-profile="${escapeHtml(profile.username)}">✓ Dejar de seguir</button>`
+              : `<button class="button button--quiet" type="button" data-follow-profile="${escapeHtml(profile.username)}">${icon("userPlus")} Seguir</button>`}
+          </div>`}
     </section>
     <section class="panel player-profile-card">
       <div class="player-profile-hero">
         ${avatarMarkup(profile, "avatar avatar--public-profile")}
         <div><small>${escapeHtml(mode?.tier ?? eloTier(rating))}</small><h2><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--public-profile")}</h2><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p></div>
-        <div class="player-profile-followers"><span><b>${profile.followerCount}</b><small>Seguidores</small></span><span><b>${profile.followingCount}</b><small>Siguiendo</small></span></div>
+        <div class="player-profile-followers"><span><b>${profile.followerCount}</b><small>Seguidores</small></span><button type="button" data-view-following aria-label="Ver a quién sigue @${escapeHtml(profile.username)}"><b>${profile.followingCount}</b><small>Siguiendo <i aria-hidden="true">→</i></small></button></div>
       </div>
       ${title ? `<div class="player-world-title is-${profile.worldTitle?.placement}">${worldTrophyMarkup(profile, "world-trophy--profile-banner")}<span><small>PODIO MUNDIAL VIGENTE</small><b>${escapeHtml(title.label)}</b><p>Trofeo oficial y pase directo al próximo Campeonato Mundial.</p></span></div>` : ""}
       <div class="player-profile-rating"><span><small>Elo Damas</small><b>${rating.toLocaleString("es-DO")}</b></span><span><small>Mejor Elo</small><b>${(mode?.peakRating ?? rating).toLocaleString("es-DO")}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
       <div class="player-profile-record"><span><b>${response.summary.totalGames}</b><small>Partidas</small></span><span><b>${response.summary.wins}</b><small>Victorias</small></span><span><b>${response.summary.losses}</b><small>Derrotas</small></span><span><b>${response.summary.draws}</b><small>Tablas</small></span><span><b>${response.summary.winRate}%</b><small>Rendimiento</small></span></div>
       <div class="player-profile-details"><span><small>Miembro desde</small><b>${escapeHtml(joined)}</b></span><span><small>Últimos 30 días</small><b>${response.summary.gamesLast30Days} partidas</b></span><span><small>Promedio por partida</small><b>${response.summary.averageMoves || 0} movimientos</b></span><span><small>Duración promedio</small><b>${formatDuration(response.summary.averageDuration || 0)}</b></span></div>
-    </section>`;
+      ${playerMatchHistoryMarkup(response.recentGames)}
+    </section>
+    <dialog class="profile-following-dialog" aria-labelledby="profile-following-title">
+      <header><div><span class="section-kicker">CÍRCULO DE JUGADORES</span><h2 id="profile-following-title">Personas que sigue @${escapeHtml(profile.username)}</h2><p><b>${profile.followingCount}</b> ${profile.followingCount === 1 ? "perfil" : "perfiles"}</p></div><button type="button" data-close-profile-following aria-label="Cerrar">×</button></header>
+      <div class="profile-following-list" data-profile-following-list></div>
+    </dialog>`;
+}
+
+function profileFollowingListMarkup(users: User[]) {
+  if (!users.length) {
+    return `<div class="profile-following-empty"><span>${icon("users")}</span><b>Aún no sigue a ningún jugador</b><p>Cuando agregue personas a su círculo, aparecerán aquí.</p></div>`;
+  }
+  return users.map((user) => `<button class="profile-following-player" type="button" data-player-profile-link="${escapeHtml(user.username)}" aria-label="Ver perfil de ${escapeHtml(user.name)}">
+    ${avatarMarkup(user, "avatar avatar--profile-following")}
+    <span><span class="player-name-with-title"><b>${escapeHtml(user.name)}</b>${worldTrophyMarkup(user)}</span><small>${flag(user.countryCode)} @${escapeHtml(user.username)}</small>${worldTitleRecognitionMarkup(user, "world-title-recognition--compact")}</span>
+    <i aria-hidden="true">→</i>
+  </button>`).join("");
 }
 
 async function renderPlayerProfile(username: string) {
@@ -1515,17 +1902,45 @@ async function renderPlayerProfile(username: string) {
     if (route() !== `/perfil/${username}`) return;
     root.innerHTML = appLayout(playerProfilePageMarkup(response), "community");
     bindNavigation();
-    root.querySelector<HTMLButtonElement>("[data-follow-profile]")?.addEventListener("click", async (event) => {
-      const button = event.currentTarget as HTMLButtonElement;
-      button.disabled = true;
+    root.querySelector<HTMLButtonElement>("[data-challenge-profile]")?.addEventListener("click", () => {
+      openProfileChallenge(response.profile);
+    });
+    root.querySelectorAll<HTMLButtonElement>("[data-follow-profile], [data-unfollow-profile]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const unfollowing = button.hasAttribute("data-unfollow-profile");
+        button.disabled = true;
+        try {
+          if (unfollowing) await api.unfollow(username);
+          else await api.follow(username);
+          toast(unfollowing
+            ? `Dejaste de seguir a @${username}.`
+            : `Ahora sigues a @${username}.`);
+          await renderPlayerProfile(username);
+        } catch (error) {
+          button.disabled = false;
+          toast(errorMessage(error), "error");
+        }
+      });
+    });
+    const followingDialog = root.querySelector<HTMLDialogElement>(".profile-following-dialog");
+    const followingList = followingDialog?.querySelector<HTMLElement>("[data-profile-following-list]");
+    const closeFollowing = () => followingDialog?.close();
+    root.querySelector<HTMLButtonElement>("[data-view-following]")?.addEventListener("click", async () => {
+      if (!followingDialog || !followingList) return;
+      followingList.innerHTML = `<div class="profile-following-loading"><span class="loader"></span><p>Cargando perfiles…</p></div>`;
+      followingDialog.showModal();
       try {
-        await api.follow(button.dataset.followProfile || username);
-        toast(`@${username} fue agregado a tus amigos.`);
-        await renderPlayerProfile(username);
+        const result = await api.following(username);
+        if (followingList.isConnected) followingList.innerHTML = profileFollowingListMarkup(result.users);
       } catch (error) {
-        button.disabled = false;
-        toast(errorMessage(error), "error");
+        if (followingList.isConnected) {
+          followingList.innerHTML = `<div class="profile-following-empty"><span>!</span><b>No pudimos cargar los perfiles</b><p>${escapeHtml(errorMessage(error))}</p></div>`;
+        }
       }
+    });
+    followingDialog?.querySelector("[data-close-profile-following]")?.addEventListener("click", closeFollowing);
+    followingDialog?.addEventListener("click", (event) => {
+      if (event.target === followingDialog) closeFollowing();
     });
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "community");
@@ -1938,6 +2353,266 @@ async function copyText(value: string) {
 function stopLinkInvitationPolling() {
   if (linkInvitationTimer) window.clearInterval(linkInvitationTimer);
   linkInvitationTimer = null;
+}
+
+function stopOutgoingChallengePolling() {
+  if (outgoingChallengeTimer) window.clearInterval(outgoingChallengeTimer);
+  outgoingChallengeTimer = null;
+}
+
+function removeOutgoingChallengeDialog() {
+  stopOutgoingChallengePolling();
+  if (outgoingChallengeDialog?.open) outgoingChallengeDialog.close();
+  outgoingChallengeDialog?.remove();
+  outgoingChallengeDialog = null;
+}
+
+function openProfileChallenge(
+  player: Pick<User, "name" | "username" | "avatarUrl" | "worldTitle">,
+) {
+  if (outgoingChallengeDialog) {
+    outgoingChallengeDialog.focus();
+    return;
+  }
+
+  let timeControl = selectedTime;
+  let invitation: DirectInvitation | null = null;
+  let requestRunning = false;
+  const dialog = document.createElement("dialog");
+  dialog.className = "direct-challenge-dialog";
+  dialog.setAttribute("aria-labelledby", "direct-challenge-title");
+  dialog.innerHTML = `
+    <button class="dialog-close" type="button" data-close-direct-challenge aria-label="Cerrar">×</button>
+    <span class="invite-seal">${icon("play")}</span>
+    <span class="section-kicker">DESAFÍO DIRECTO · 10×10</span>
+    <h2 id="direct-challenge-title">Desafiar a @${escapeHtml(player.username)}</h2>
+    <p>Elige el tiempo de cada jugador. La invitación estará disponible durante 15 minutos.</p>
+    <div class="direct-challenge-player">
+      ${avatarMarkup(player, "avatar avatar--invite-preview")}
+      <span><small>TU RIVAL</small><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><em>@${escapeHtml(player.username)}</em></span>
+    </div>
+    <div class="direct-challenge-times" role="radiogroup" aria-label="Tiempo por jugador">
+      ${TIME_CONTROLS.map((minutes) => `<button class="${minutes === timeControl ? "is-selected" : ""}" type="button" role="radio" aria-checked="${minutes === timeControl}" data-direct-challenge-time="${minutes}"><b>${minutes}</b><small>minutos</small></button>`).join("")}
+    </div>
+    <div class="direct-challenge-status" data-direct-challenge-status aria-live="polite"></div>
+    <div class="direct-challenge-actions">
+      <button class="button button--quiet" type="button" data-close-direct-challenge>Cancelar</button>
+      <button class="button button--primary" type="button" data-send-direct-challenge>${icon("play")} Enviar desafío</button>
+    </div>`;
+
+  const status = dialog.querySelector<HTMLElement>("[data-direct-challenge-status]");
+  const sendButton = dialog.querySelector<HTMLButtonElement>("[data-send-direct-challenge]");
+  const closeButtons = dialog.querySelectorAll<HTMLButtonElement>("[data-close-direct-challenge]");
+
+  const close = async (cancelPending: boolean) => {
+    if (requestRunning) return;
+    const pendingId = invitation?.status === "pending" ? invitation.id : null;
+    removeOutgoingChallengeDialog();
+    if (cancelPending && pendingId) {
+      await api.cancelInvitation(pendingId).catch(() => {});
+    }
+  };
+
+  dialog.querySelectorAll<HTMLButtonElement>("[data-direct-challenge-time]").forEach((button) => {
+    button.addEventListener("click", () => {
+      timeControl = Number(button.dataset.directChallengeTime) as TimeControl;
+      dialog.querySelectorAll<HTMLButtonElement>("[data-direct-challenge-time]").forEach((option) => {
+        const isSelected = option === button;
+        option.classList.toggle("is-selected", isSelected);
+        option.setAttribute("aria-checked", String(isSelected));
+      });
+    });
+  });
+
+  const checkStatus = async () => {
+    if (!invitation || requestRunning) return;
+    requestRunning = true;
+    try {
+      const result = await api.invitationStatus(invitation.id);
+      invitation = result.invitation;
+      if (result.invitation.status === "accepted" && result.game) {
+        removeOutgoingChallengeDialog();
+        toast(`@${player.username} aceptó tu desafío.`);
+        navigate(`/partida/${result.game.id}`);
+        return;
+      }
+      if (result.invitation.status !== "pending") {
+        stopOutgoingChallengePolling();
+        if (status) {
+          status.className = "direct-challenge-status is-error";
+          status.textContent = result.invitation.status === "declined"
+            ? `@${player.username} rechazó el desafío.`
+            : "Este desafío ya no está disponible.";
+        }
+        if (sendButton) {
+          sendButton.disabled = false;
+          sendButton.innerHTML = `${icon("play")} Enviar otro desafío`;
+        }
+        dialog.querySelectorAll<HTMLButtonElement>("[data-direct-challenge-time]").forEach((option) => {
+          option.disabled = false;
+        });
+        invitation = null;
+      }
+    } catch (error) {
+      if (status) {
+        status.className = "direct-challenge-status is-error";
+        status.textContent = errorMessage(error);
+      }
+    } finally {
+      requestRunning = false;
+    }
+  };
+
+  sendButton?.addEventListener("click", async () => {
+    if (requestRunning) return;
+    requestRunning = true;
+    sendButton.disabled = true;
+    sendButton.innerHTML = `${icon("play")} Enviando…`;
+    if (status) {
+      status.className = "direct-challenge-status";
+      status.textContent = "";
+    }
+    try {
+      const result = await api.createInvitation(player.username, timeControl);
+      invitation = result.invitation;
+      selectedTime = timeControl;
+      dialog.querySelectorAll<HTMLButtonElement>("[data-direct-challenge-time]").forEach((option) => {
+        option.disabled = true;
+      });
+      if (status) {
+        status.className = "direct-challenge-status is-waiting";
+        status.innerHTML = `<i class="status-dot"></i><span><b>Desafío enviado</b><small>Esperando la respuesta de @${escapeHtml(player.username)}…</small></span>`;
+      }
+      sendButton.innerHTML = "Esperando respuesta…";
+      closeButtons.forEach((button) => {
+        button.textContent = button.classList.contains("dialog-close") ? "×" : "Cancelar desafío";
+      });
+      stopOutgoingChallengePolling();
+      outgoingChallengeTimer = window.setInterval(() => void checkStatus(), 1600);
+    } catch (error) {
+      sendButton.disabled = false;
+      sendButton.innerHTML = `${icon("play")} Enviar desafío`;
+      if (status) {
+        status.className = "direct-challenge-status is-error";
+        status.textContent = errorMessage(error);
+      }
+    } finally {
+      requestRunning = false;
+    }
+  });
+
+  closeButtons.forEach((button) => {
+    button.addEventListener("click", () => void close(true));
+  });
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    void close(true);
+  });
+  document.body.append(dialog);
+  outgoingChallengeDialog = dialog;
+  dialog.showModal();
+}
+
+function closeIncomingChallengeDialog() {
+  if (incomingChallengeDialog?.open) incomingChallengeDialog.close();
+  incomingChallengeDialog?.remove();
+  incomingChallengeDialog = null;
+  incomingChallengeId = null;
+}
+
+function showIncomingChallenge(invitation: DirectInvitation) {
+  if (incomingChallengeId === invitation.id && incomingChallengeDialog) return;
+  closeIncomingChallengeDialog();
+  incomingChallengeId = invitation.id;
+  const challenger = invitation.opponent;
+  const dialog = document.createElement("dialog");
+  dialog.className = "direct-challenge-dialog incoming-challenge-dialog";
+  dialog.setAttribute("aria-labelledby", "incoming-challenge-title");
+  dialog.innerHTML = `
+    <span class="invite-seal">${icon("crown")}</span>
+    <span class="section-kicker">TE HAN DESAFIADO · 10×10</span>
+    <h2 id="incoming-challenge-title">@${escapeHtml(challenger.username)} te desafía</h2>
+    <p>¿Aceptas enfrentarte a ${escapeHtml(challenger.name)} en una partida de ${invitation.timeControlMinutes} minutos por jugador?</p>
+    <div class="direct-challenge-player">
+      ${avatarMarkup(challenger, "avatar avatar--invite-preview")}
+      <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(challenger.name)}</b>${worldTrophyMarkup(challenger)}</span><em>@${escapeHtml(challenger.username)} · ${challenger.rating.toLocaleString("es-DO")} Elo</em></span>
+    </div>
+    <div class="incoming-challenge-detail"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>${invitation.timeControlMinutes} min</b></span></div>
+    <div class="direct-challenge-status" data-incoming-challenge-status aria-live="polite"></div>
+    <div class="direct-challenge-actions">
+      <button class="button button--quiet" type="button" data-decline-direct-challenge>Rechazar</button>
+      <button class="button button--primary" type="button" data-accept-direct-challenge>${icon("play")} Aceptar y jugar</button>
+    </div>`;
+  const acceptButton = dialog.querySelector<HTMLButtonElement>("[data-accept-direct-challenge]");
+  const declineButton = dialog.querySelector<HTMLButtonElement>("[data-decline-direct-challenge]");
+  const status = dialog.querySelector<HTMLElement>("[data-incoming-challenge-status]");
+  let responding = false;
+
+  const setResponding = (value: boolean) => {
+    responding = value;
+    if (acceptButton) acceptButton.disabled = value;
+    if (declineButton) declineButton.disabled = value;
+  };
+  const showError = (error: unknown) => {
+    if (status) {
+      status.className = "direct-challenge-status is-error";
+      status.textContent = errorMessage(error);
+    }
+  };
+  const decline = async () => {
+    if (responding) return;
+    setResponding(true);
+    try {
+      await api.declineInvitation(invitation.id);
+      closeIncomingChallengeDialog();
+      toast(`Rechazaste el desafío de @${challenger.username}.`);
+    } catch (error) {
+      setResponding(false);
+      showError(error);
+    }
+  };
+  acceptButton?.addEventListener("click", async () => {
+    if (responding) return;
+    setResponding(true);
+    acceptButton.innerHTML = `${icon("play")} Preparando partida…`;
+    try {
+      const result = await api.acceptInvitation(invitation.id);
+      closeIncomingChallengeDialog();
+      navigate(`/partida/${result.game.id}`);
+    } catch (error) {
+      setResponding(false);
+      acceptButton.innerHTML = `${icon("play")} Aceptar y jugar`;
+      showError(error);
+    }
+  });
+  declineButton?.addEventListener("click", () => void decline());
+  dialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    void decline();
+  });
+  document.body.append(dialog);
+  incomingChallengeDialog = dialog;
+  dialog.showModal();
+}
+
+async function checkIncomingChallenges() {
+  if (
+    !currentUser ||
+    incomingChallengeCheckRunning ||
+    /^\/partida\/\d+$/.test(route())
+  ) return;
+  incomingChallengeCheckRunning = true;
+  try {
+    const invitation = (await api.invitations()).invitations.find(
+      (item) => item.status === "pending" && item.direction === "received",
+    );
+    if (invitation) showIncomingChallenge(invitation);
+    else if (incomingChallengeDialog) closeIncomingChallengeDialog();
+  } catch {
+    // El evento de tiempo real o la próxima carga volverán a intentarlo.
+  } finally {
+    incomingChallengeCheckRunning = false;
+  }
 }
 
 async function createFriendChallenge() {
@@ -3383,10 +4058,6 @@ function gameQuickActions(chatAvailable = true) {
       <div class="settings-toggle-row"><span>${icon("volume")}<b>Interfaz y jugadas</b></span><button type="button" role="switch" aria-label="Sonidos de interfaz, movimientos y capturas" aria-checked="${sounds.moves}" class="mini-switch ${sounds.moves ? "is-on" : ""}" data-move-sound><i></i></button></div>
       <div class="settings-toggle-row"><span><i class="settings-symbol">♫</i><b>Música de fondo</b></span><button type="button" role="switch" aria-label="Música de fondo" aria-checked="${sounds.background}" class="mini-switch ${sounds.background ? "is-on" : ""}" data-background-sound><i></i></button></div>
       <label class="settings-volume-row"><span><i>♪</i><b>Volumen</b></span><span class="volume-slider"><input type="range" min="0" max="100" step="5" value="${backgroundVolume}" aria-label="Volumen de la música de fondo" data-background-volume style="--volume-progress:${backgroundVolume}%" /><output data-background-volume-output>${backgroundVolume}%</output></span></label>
-      <details class="audio-credits">
-        <summary><span>©</span><b>Créditos de audio</b><i aria-hidden="true">›</i></summary>
-        <div><strong>“${escapeHtml(AUDIO_CREDITS.title)}”</strong><span>Música de fondo por <a href="${escapeHtml(AUDIO_CREDITS.creatorUrl)}" target="_blank" rel="noreferrer">${escapeHtml(AUDIO_CREDITS.creator)}</a></span><small>Licencia <a href="${escapeHtml(AUDIO_CREDITS.licenseUrl)}" target="_blank" rel="noreferrer">${escapeHtml(AUDIO_CREDITS.license)}</a></small><em><span>Movimiento · “${escapeHtml(AUDIO_CREDITS.effects.movement.title)}” por <a href="${escapeHtml(AUDIO_CREDITS.effects.movement.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(AUDIO_CREDITS.effects.movement.creator)}</a> · ${AUDIO_CREDITS.effects.movement.licenses.map((license) => `<a href="${escapeHtml(license.url)}" target="_blank" rel="noreferrer">${escapeHtml(license.label)}</a>`).join(" / ")}</span><span>Captura · “${escapeHtml(AUDIO_CREDITS.effects.capture.title)}” por <a href="${escapeHtml(AUDIO_CREDITS.effects.capture.sourceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(AUDIO_CREDITS.effects.capture.creator)}</a> · <a href="${escapeHtml(AUDIO_CREDITS.effects.capture.licenseUrl)}" target="_blank" rel="noreferrer">${escapeHtml(AUDIO_CREDITS.effects.capture.license)}</a></span></em></div>
-      </details>
       <button type="button" data-settings-new><span>${icon("refresh")}</span><b>Nueva partida</b></button>
     </div>
   </div>`;
@@ -3494,10 +4165,13 @@ async function connectRealtime() {
   const { io } = await (socketIoPromise ??= import("socket.io-client"));
   if (!currentUser) return;
   socket?.disconnect();
-  socket = io(SOCKET_URL, { withCredentials: true, transports: ["websocket", "polling"] });
+  socket = io(SOCKET_URL, { withCredentials: true, transports: ["websocket"] });
   socket.on("matchmaking:matched", (game: Game) => {
     if (matchmakingTimer) void stopMatchmaking(false);
     navigate(`/partida/${game.id}`);
+  });
+  socket.on("invitation:updated", () => {
+    void checkIncomingChallenges();
   });
   socket.on("connect_error", (error) => {
     console.warn("Tiempo real no disponible; se usará sincronización HTTP.", error.message);
@@ -3519,6 +4193,7 @@ async function renderRoute() {
   pageCleanup?.();
   pageCleanup = null;
   stopLinkInvitationPolling();
+  if (isPasswordResetPath()) return renderPasswordReset(passwordResetToken());
   const sharedInvitation = new URLSearchParams(window.location.search).get("invitacion");
   if (sharedInvitation) return renderSharedInvitation(sharedInvitation);
   if (!currentUser) {
@@ -3576,6 +4251,7 @@ async function handleHashChange() {
   if (bypassNextHashGuard) {
     bypassNextHashGuard = false;
     await renderRoute();
+    if (currentUser) void checkIncomingChallenges();
     return;
   }
   if (route() !== renderedPath && !(await requestPageLeave())) {
@@ -3587,6 +4263,7 @@ async function handleHashChange() {
     return;
   }
   await renderRoute();
+  if (currentUser) void checkIncomingChallenges();
 }
 
 export async function startApp(user: User | null) {
@@ -3621,4 +4298,5 @@ export async function startApp(user: User | null) {
     }
   }
   await renderRoute();
+  if (currentUser) void checkIncomingChallenges();
 }
