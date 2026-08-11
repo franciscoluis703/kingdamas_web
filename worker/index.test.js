@@ -4,10 +4,14 @@ import worker, {
   canonicalUrl,
   invitationPreviewImageUrl,
   invitationTokenFromUrl,
+  robotsText,
+  sitemapXml,
   upstreamRequest,
   upstreamUrl,
   withInvitationMetadata,
   withAssetCaching,
+  withNoIndex,
+  withSeoPage,
 } from "./index.js";
 
 describe("proxy de Cloudflare", () => {
@@ -67,6 +71,46 @@ describe("proxy de Cloudflare", () => {
     expect(invitationTokenFromUrl("https://kingdamas.com/?invitacion=corto")).toBeNull();
   });
 
+  it("publica instrucciones de rastreo con el sitemap canónico", () => {
+    expect(robotsText()).toContain("Allow: /");
+    expect(robotsText()).toContain("Disallow: /api/");
+    expect(robotsText()).toContain("Sitemap: https://kingdamas.com/sitemap.xml");
+  });
+
+  it("genera un sitemap XML con las páginas públicas y sin rutas hash", () => {
+    const sitemap = sitemapXml();
+    expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
+    expect(sitemap).toContain("<loc>https://kingdamas.com/</loc>");
+    expect(sitemap).toContain("<loc>https://kingdamas.com/como-jugar</loc>");
+    expect(sitemap).toContain("<loc>https://kingdamas.com/politica-de-privacidad</loc>");
+    expect(sitemap).not.toContain("#");
+  });
+
+  it("entrega contenido y metadatos rastreables para cada URL pública", async () => {
+    const response = await withSeoPage(
+      new Response('<html><head><!-- SEO_META_START --><!-- SEO_META_END --></head><body><div id="app"><!-- SEO_FALLBACK_START --><!-- SEO_FALLBACK_END --></div></body></html>', {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+      "/como-jugar",
+    );
+    const html = await response.text();
+    expect(html).toContain("Cómo jugar damas internacionales 10×10");
+    expect(html).toContain('<link rel="canonical" href="https://kingdamas.com/como-jugar"');
+    expect(html).toContain('type="application/ld+json"');
+    expect(html).toContain("Capturas obligatorias");
+    expect(response.headers.get("x-robots-tag")).toBe("index, follow");
+  });
+
+  it("marca como no indexables las rutas privadas o desconocidas", async () => {
+    const response = await withNoIndex(
+      new Response("<html><head></head><body></body></html>", {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+    );
+    expect(await response.text()).toContain("noindex, nofollow, noarchive");
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
+  });
+
   it("inyecta una tarjeta social personalizada en el enlace compartido", async () => {
     const token = "abcdefghijklmnopqrstuvwxyzABCDEF";
     const response = await withInvitationMetadata(
@@ -83,5 +127,6 @@ describe("proxy de Cloudflare", () => {
     expect(html).toContain("summary_large_image");
     expect(html).not.toContain("/brand/default.png");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("x-robots-tag")).toContain("noindex");
   });
 });

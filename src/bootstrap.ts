@@ -4,6 +4,7 @@ import { installInterfaceSounds } from "./game/sound";
 import { renderPublicLanding } from "./landing";
 import type { User } from "./types";
 import { initializeI18n, useUserLanguage } from "./i18n";
+import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -36,7 +37,8 @@ function launchApp(user: User | null) {
 async function bootstrap() {
   const sharedInvitation = new URLSearchParams(window.location.search).has("invitacion");
   const passwordReset = window.location.pathname.replace(/\/+$/, "") === "/restablecer";
-  const optimisticLanding = !hasSessionHint() && !sharedInvitation && !passwordReset;
+  const publicContent = isPublicContentPath(normalizePublicPath(window.location.pathname));
+  const optimisticLanding = !hasSessionHint() && !sharedInvitation && !passwordReset && !publicContent;
   if (optimisticLanding) renderPublicLanding(launchApp);
   else root.innerHTML = `<div class="loading-state"><span class="loader"></span><p>Preparando la mesa…</p></div>`;
 
@@ -47,7 +49,7 @@ async function bootstrap() {
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) setSessionHint(false);
     else console.warn("No se pudo recuperar la sesión.", error);
-    if (sharedInvitation || passwordReset) await launchApp(null);
+    if (sharedInvitation || passwordReset || publicContent) await launchApp(null);
     else if (!optimisticLanding) renderPublicLanding(launchApp);
   }
 }

@@ -61,6 +61,7 @@ import type {
   WorldChampionshipResponse,
 } from "./types";
 import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
+import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
 import {
   LANGUAGE_CHANGE_EVENT,
   currentLanguage,
@@ -127,7 +128,12 @@ const LEGAL_ROUTES = [
 ] as const;
 type LegalPath = (typeof LEGAL_ROUTES)[number]["path"];
 
-const route = () => location.hash.replace(/^#/, "") || "/inicio";
+const route = () => {
+  const hashPath = location.hash.replace(/^#/, "");
+  if (hashPath) return hashPath;
+  const publicPath = normalizePublicPath(location.pathname);
+  return isPublicContentPath(publicPath) ? publicPath : "/inicio";
+};
 let renderedPath = route();
 let bypassNextHashGuard = false;
 
@@ -379,14 +385,23 @@ function playerProfileButton(
 function publicHeader() {
   return `
     <header class="public-header container">
-      <button class="brand brand--button" type="button" data-route="/inicio" aria-label="Ir al inicio">${logoMarkup()}</button>
+      <a class="brand" href="/" aria-label="Ir al inicio">${logoMarkup()}</a>
       <nav class="public-nav" aria-label="Navegación principal">
-        <a href="#como-jugar">Cómo jugar</a>
+        <a href="/como-jugar">Cómo jugar</a>
+        <a href="/acerca-de">Acerca de</a>
         ${languageSelectorMarkup("language-selector--public")}
         <button class="button button--quiet" type="button" data-open-auth="login">Entrar</button>
         <button class="button button--primary button--small" type="button" data-open-auth="register">Crear cuenta</button>
       </nav>
     </header>`;
+}
+
+function publicFooterMarkup() {
+  return `<footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><nav aria-label="Información legal"><a href="/acerca-de">Acerca de</a><a href="/contacto">Contacto</a><a href="/politica-de-cookies">Cookies</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer>`;
+}
+
+function publicPageLayout(content: string) {
+  return `<div class="landing public-information-shell">${publicHeader()}<main class="public-information-page container">${content}</main>${publicFooterMarkup()}${authDialogMarkup()}</div>`;
 }
 
 function appLayout(content: string, active: "home" | "ranking" | "game" | "watch" | "community" | "tournaments" | "donate" | "credits" | "legal" = "home") {
@@ -684,8 +699,12 @@ function renderLanding() {
             <article><span>03</span><div><b>Domina el tablero</b><p>Captura, corona y escala posiciones.</p></div></article>
           </div>
         </section>
+        <section class="seo-content-section container" aria-labelledby="seo-home-title">
+          <div><span class="section-kicker">JUEGA · APRENDE · COMPARTE</span><h2 id="seo-home-title">Damas internacionales 10×10 online</h2><p>King Damas es un espacio gratuito para jugar desde República Dominicana o cualquier lugar del mundo. Elige partidas rápidas de 10 minutos o controles de 30 y 60 minutos para pensar cada movimiento.</p><a class="button button--outline" href="/como-jugar">Aprender cómo jugar</a></div>
+          <div class="seo-home-features"><article><b>Buscar rival</b><p>Encuentra un oponente de nivel similar y compite por Elo Damas.</p></article><article><b>Desafiar a un amigo</b><p>Comparte un enlace privado y juega una partida 10×10 en tiempo real.</p></article><article><b>Camino de Leyendas</b><p>Entrena capturas, estrategia y finales sin modificar tu clasificación.</p></article></div>
+        </section>
       </main>
-      <footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><span>Hecho para quienes piensan dos jugadas adelante.</span></footer>
+      ${publicFooterMarkup()}
       ${authDialogMarkup()}
     </div>`;
   bindNavigation();
@@ -1285,7 +1304,31 @@ function renderInformationHub() {
   bindNavigation();
 }
 
+function howToPlayMarkup() {
+  return `<section class="page-heading legal-heading"><div><span class="eyebrow"><i></i>GUÍA DEL TABLERO 10×10</span><h1>Cómo jugar damas internacionales</h1><p>Aprende la posición inicial, los movimientos, las capturas obligatorias y la coronación antes de entrar a tu primera mesa.</p></div><span class="mode-pill mode-pill--large">10 × 10</span></section>
+    <article class="panel how-to-document">
+      <section class="how-to-intro"><div><span class="section-kicker">OBJETIVO</span><h2>Captura o bloquea todas las fichas rivales</h2><p>Ganas cuando tu rival se queda sin fichas o no dispone de ningún movimiento legal. Cada decisión ocurre sobre las 50 casillas oscuras de un tablero de 100 cuadros.</p></div><div class="how-to-board-facts"><span><b>10×10</b><small>tablero</small></span><span><b>20</b><small>fichas por lado</small></span><span><b>2</b><small>filas centrales libres</small></span></div></section>
+      <section><span class="how-to-step">01</span><div><h2>Posición inicial</h2><p>Cada jugador comienza con veinte fichas colocadas sobre las casillas oscuras de sus primeras cuatro filas. Las filas quinta y sexta permanecen vacías para abrir el centro del tablero.</p></div></section>
+      <section><span class="how-to-step">02</span><div><h2>Movimiento de una ficha</h2><p>Una ficha normal avanza una casilla en diagonal hacia una casilla oscura libre. Durante una captura puede saltar piezas rivales tanto hacia delante como hacia atrás.</p></div></section>
+      <section><span class="how-to-step">03</span><div><h2>La captura es obligatoria</h2><p>Si existe una captura, debes realizarla. Cuando hay varias alternativas se elige la secuencia que captura más fichas; si dos secuencias capturan la misma cantidad, tiene prioridad la que captura más damas. Una misma jugada puede encadenar varios saltos.</p></div></section>
+      <section><span class="how-to-step">04</span><div><h2>Coronación y dama voladora</h2><p>Cuando una ficha alcanza la última fila se convierte en dama. La dama puede desplazarse varias casillas libres por una diagonal y capturar a distancia, aterrizando en una casilla libre situada después de la pieza rival.</p></div></section>
+      <section><span class="how-to-step">05</span><div><h2>Reloj y final de partida</h2><p>King Damas ofrece controles de 10, 30 y 60 minutos por jugador. También puedes ganar por tiempo o por rendición; las tablas pueden acordarse durante una partida disponible.</p></div></section>
+      <section class="how-to-modes"><div><span class="section-kicker">PRACTICA A TU MANERA</span><h2>Tres formas de entrar al tablero</h2></div><div><article><b>Camino de Leyendas</b><p>Entrena contra rivales virtuales de dificultad progresiva sin afectar tu Elo.</p></article><article><b>Desafiar a un amigo</b><p>Crea un enlace privado y compártelo con la persona que quieras enfrentar.</p></article><article><b>Buscar rival</b><p>Entra al emparejamiento clasificado y compite con jugadores de nivel similar.</p></article></div></section>
+      <footer class="how-to-cta"><div><span class="section-kicker">LA MESA ESTÁ LISTA</span><h2>Aprende jugando una partida gratuita</h2></div><button class="button button--primary" type="button" data-open-auth="register">Crear cuenta y jugar</button></footer>
+    </article>`;
+}
+
+function renderHowToPlay() {
+  const content = howToPlayMarkup();
+  root.innerHTML = currentUser
+    ? appLayout(content, "game")
+    : publicPageLayout(content);
+  bindNavigation();
+  if (!currentUser) bindAuthDialog();
+}
+
 function termsConsentMarkup() {
+  if (!currentUser) return "";
   const acceptedAt = legalConsentAcceptedAt();
   if (acceptedAt) {
     const date = new Date(acceptedAt).toLocaleString(localeCode(), {
@@ -1352,16 +1395,26 @@ function legalPageMarkup(path: LegalPath) {
     "/politica-de-privacidad": { title: "Política de privacidad", eyebrow: "TUS DATOS, CON CLARIDAD", description: "Cómo recopilamos, utilizamos y protegemos tu información.", body: legalPrivacyMarkup },
   };
   const page = pages[path];
+  const menu = LEGAL_ROUTES.map((item, index) => {
+    const content = `<i>${String(index + 1).padStart(2, "0")}</i><span>${item.shortLabel}</span><b aria-hidden="true">›</b>`;
+    return currentUser
+      ? `<button class="${item.path === path ? "is-active" : ""}" type="button" data-route="${item.path}">${content}</button>`
+      : `<a class="${item.path === path ? "is-active" : ""}" href="${item.path}">${content}</a>`;
+  }).join("");
   return `<section class="page-heading legal-heading"><div><span class="eyebrow"><i></i>${page.eyebrow}</span><h1>${page.title}</h1><p>${page.description}</p></div><span class="legal-updated"><small>ÚLTIMA ACTUALIZACIÓN</small><b>9 ago 2026</b></span></section>
     <div class="legal-layout">
-      <aside class="panel legal-page-menu"><small>INFORMACIÓN</small>${LEGAL_ROUTES.map((item, index) => `<button class="${item.path === path ? "is-active" : ""}" type="button" data-route="${item.path}"><i>${String(index + 1).padStart(2, "0")}</i><span>${item.shortLabel}</span><b aria-hidden="true">›</b></button>`).join("")}</aside>
+      <aside class="panel legal-page-menu"><small>INFORMACIÓN</small>${menu}</aside>
       <article class="panel legal-document">${page.body()}<footer><span>${brandMarkMarkup()}</span><p><b>King Damas</b><small>Damas internacionales 10×10 · República Dominicana</small></p></footer></article>
     </div>`;
 }
 
 function renderLegalPage(path: LegalPath) {
-  root.innerHTML = appLayout(legalPageMarkup(path), "legal");
+  const content = legalPageMarkup(path);
+  root.innerHTML = currentUser
+    ? appLayout(content, "legal")
+    : publicPageLayout(content);
   bindNavigation();
+  if (!currentUser) bindAuthDialog();
 }
 
 function communityPlayerMarkup(
@@ -4376,6 +4429,8 @@ async function renderRoute() {
   if (isPasswordResetPath()) return renderPasswordReset(passwordResetToken());
   const sharedInvitation = new URLSearchParams(window.location.search).get("invitacion");
   if (sharedInvitation) return renderSharedInvitation(sharedInvitation);
+  if (path === "/como-jugar") return renderHowToPlay();
+  if (isLegalPath(path)) return renderLegalPage(path);
   if (!currentUser) {
     renderLanding();
     return;
@@ -4388,7 +4443,6 @@ async function renderRoute() {
   if (path === "/donar") return renderDonation();
   if (path === "/creditos") return renderCredits();
   if (path === "/informacion") return renderInformationHub();
-  if (isLegalPath(path)) return renderLegalPage(path);
   if (path === "/en-vivo") return renderLiveGames();
   if (path === "/jugar") return renderPlayPage();
   const legendRoadMatch = path.match(/^\/leyendas\/(10|30|60)$/);

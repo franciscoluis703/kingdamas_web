@@ -1,3 +1,5 @@
+import { publicPageMetadata } from "./publicRoutes";
+
 export type AppLanguage = "es" | "en";
 
 export const LANGUAGE_CHANGE_EVENT = "kingdamas:language-change";
@@ -104,6 +106,40 @@ const english = new Map<string, string>([
   ["Domina el tablero", "Master the board"],
   ["Captura, corona y escala posiciones.", "Capture, crown, and climb the ranks."],
   ["Hecho para quienes piensan dos jugadas adelante.", "Made for players who think two moves ahead."],
+  ["JUEGA · APRENDE · COMPARTE", "PLAY · LEARN · CONNECT"],
+  ["Damas internacionales 10×10 online", "10×10 international draughts online"],
+  ["King Damas es un espacio gratuito para jugar desde República Dominicana o cualquier lugar del mundo. Elige partidas rápidas de 10 minutos o controles de 30 y 60 minutos para pensar cada movimiento.", "King Damas is a free place to play from the Dominican Republic or anywhere in the world. Choose quick 10-minute matches or 30- and 60-minute controls to think through every move."],
+  ["Aprender cómo jugar", "Learn how to play"],
+  ["Encuentra un oponente de nivel similar y compite por Elo Damas.", "Find a similarly skilled opponent and compete for Draughts Elo."],
+  ["Comparte un enlace privado y juega una partida 10×10 en tiempo real.", "Share a private link and play a real-time 10×10 match."],
+  ["Entrena capturas, estrategia y finales sin modificar tu clasificación.", "Train captures, strategy, and endgames without changing your rating."],
+  ["GUÍA DEL TABLERO 10×10", "10×10 BOARD GUIDE"],
+  ["Cómo jugar damas internacionales", "How to play international draughts"],
+  ["Aprende la posición inicial, los movimientos, las capturas obligatorias y la coronación antes de entrar a tu primera mesa.", "Learn the starting position, moves, mandatory captures, and promotion before joining your first table."],
+  ["OBJETIVO", "OBJECTIVE"],
+  ["Captura o bloquea todas las fichas rivales", "Capture or block every opposing piece"],
+  ["Ganas cuando tu rival se queda sin fichas o no dispone de ningún movimiento legal. Cada decisión ocurre sobre las 50 casillas oscuras de un tablero de 100 cuadros.", "You win when your opponent has no pieces or no legal move. Every decision takes place on the 50 dark squares of a 100-square board."],
+  ["tablero", "board"],
+  ["fichas por lado", "pieces per side"],
+  ["filas centrales libres", "open central rows"],
+  ["Posición inicial", "Starting position"],
+  ["Cada jugador comienza con veinte fichas colocadas sobre las casillas oscuras de sus primeras cuatro filas. Las filas quinta y sexta permanecen vacías para abrir el centro del tablero.", "Each player starts with twenty pieces on the dark squares of their first four rows. The fifth and sixth rows stay empty to open the center of the board."],
+  ["Movimiento de una ficha", "Moving a piece"],
+  ["Una ficha normal avanza una casilla en diagonal hacia una casilla oscura libre. Durante una captura puede saltar piezas rivales tanto hacia delante como hacia atrás.", "A regular piece moves one square diagonally onto an open dark square. During a capture, it may jump opposing pieces both forward and backward."],
+  ["La captura es obligatoria", "Captures are mandatory"],
+  ["Si existe una captura, debes realizarla. Cuando hay varias alternativas se elige la secuencia que captura más fichas; si dos secuencias capturan la misma cantidad, tiene prioridad la que captura más damas. Una misma jugada puede encadenar varios saltos.", "If a capture is available, you must make it. When several alternatives exist, choose the sequence that captures the most pieces; if two sequences capture the same number, the one that captures more kings takes priority. One move may chain several jumps."],
+  ["Coronación y dama voladora", "Promotion and flying kings"],
+  ["Cuando una ficha alcanza la última fila se convierte en dama. La dama puede desplazarse varias casillas libres por una diagonal y capturar a distancia, aterrizando en una casilla libre situada después de la pieza rival.", "When a piece reaches the last row, it becomes a king. A king may travel several open diagonal squares and capture from a distance, landing on an open square beyond the opposing piece."],
+  ["Reloj y final de partida", "Clock and end of the match"],
+  ["King Damas ofrece controles de 10, 30 y 60 minutos por jugador. También puedes ganar por tiempo o por rendición; las tablas pueden acordarse durante una partida disponible.", "King Damas offers 10-, 30-, and 60-minute controls per player. You may also win on time or by resignation; a draw may be agreed during an eligible match."],
+  ["PRACTICA A TU MANERA", "PRACTICE YOUR WAY"],
+  ["Tres formas de entrar al tablero", "Three ways to enter the board"],
+  ["Entrena contra rivales virtuales de dificultad progresiva sin afectar tu Elo.", "Train against progressively harder virtual opponents without affecting your Elo."],
+  ["Crea un enlace privado y compártelo con la persona que quieras enfrentar.", "Create a private link and share it with the person you want to challenge."],
+  ["Entra al emparejamiento clasificado y compite con jugadores de nivel similar.", "Join rated matchmaking and compete with similarly skilled players."],
+  ["LA MESA ESTÁ LISTA", "THE TABLE IS READY"],
+  ["Aprende jugando una partida gratuita", "Learn by playing a free match"],
+  ["Crear cuenta y jugar", "Create account and play"],
   ["Qué bueno verte", "Good to see you"],
   ["Entra y vuelve a tu próxima jugada.", "Sign in and get back to your next move."],
   ["Usuario o correo", "Username or email"],
@@ -1114,18 +1150,12 @@ function updateLanguageControls() {
 }
 
 function updateDocumentMetadata() {
-  const englishSelected = activeLanguage === "en";
-  document.title = englishSelected
-    ? "King Damas — 10×10 Draughts"
-    : "King Damas — Damas 10×10";
+  if (new URLSearchParams(window.location.search).has("invitacion")) return;
+  const metadata = publicPageMetadata(window.location.pathname, activeLanguage);
+  document.title = metadata.title;
   document
     .querySelector<HTMLMetaElement>('meta[name="description"]')
-    ?.setAttribute(
-      "content",
-      englishSelected
-        ? "Play 10×10 international draughts in real time."
-        : "Juega damas internacionales 10×10 en tiempo real.",
-    );
+    ?.setAttribute("content", metadata.description);
 }
 
 export function setLanguage(
