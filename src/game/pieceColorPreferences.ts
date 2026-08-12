@@ -61,8 +61,9 @@ export function pieceColorPreferences(): PieceColorPreferences {
 export function setPieceColorPreference(
   role: PieceColorRole,
   color: PieceColor,
+  current = pieceColorPreferences(),
 ): PieceColorPreferences {
-  const next = pieceColorPreferences();
+  const next = normalizePieceColorPreferences(current);
   const otherRole: PieceColorRole = role === "own" ? "opponent" : "own";
   next[role] = color;
   if (next[otherRole] === color) {
@@ -77,6 +78,15 @@ export function setPieceColorPreference(
     // La preferencia se mantiene durante la partida aunque el navegador bloquee el almacenamiento.
   }
   return next;
+}
+
+export function pieceColorPreferencesForSide(
+  playerSide: Side,
+  pieceColors: Partial<Record<Side, unknown>> | null | undefined,
+): PieceColorPreferences {
+  return normalizePieceColorPreferences(playerSide === "ivory"
+    ? { own: pieceColors?.ivory, opponent: pieceColors?.mahogany }
+    : { own: pieceColors?.mahogany, opponent: pieceColors?.ivory });
 }
 
 export function pieceColorsFor(

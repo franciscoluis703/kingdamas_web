@@ -40,6 +40,10 @@ export interface AppStoreConfig {
       productId: string;
       tier: "small" | "medium" | "large" | "champion";
     }>;
+    adFreeAnnual: {
+      productId: string;
+      period: "P1Y";
+    };
   };
 }
 
@@ -48,6 +52,12 @@ export interface AppStoreConfirmation {
   purpose: "tournament_entry" | "support";
   transactionId: string;
   tournamentId: string | null;
+}
+
+export interface PremiumEntitlement {
+  active: boolean;
+  source: "app_store" | null;
+  expiresAt: string | null;
 }
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -163,6 +173,15 @@ export const api = {
       method: "POST",
       body: json({ signedTransactionInfo }),
     }),
+  premiumStatus: () =>
+    request<{ premium: PremiumEntitlement }>("/premium/status"),
+  syncAppStoreSubscription: (
+    signedTransactionInfo: string,
+    signedRenewalInfo?: string | null,
+  ) => request<{ premium: PremiumEntitlement }>("/app-store/subscriptions/sync", {
+    method: "POST",
+    body: json({ signedTransactionInfo, signedRenewalInfo }),
+  }),
   createDonationOrder: (amount: number) =>
     request<{ id: string }>("/donations/create-order", {
       method: "POST",
@@ -286,20 +305,25 @@ export const api = {
         nextOffset: number;
         hasMore: boolean;
       }>(`/ratings/leaderboard?boardSize=10&country=${scope}&limit=${LIST_PAGE_SIZE}&offset=${offset}`)),
-  joinMatchmaking: (timeControlMinutes: number) =>
+  joinMatchmaking: (timeControlMinutes: number, pieceColor: string) =>
     request<MatchmakingResult>("/matchmaking/join", {
       method: "POST",
-      body: json({ boardSize: 10, timeControlMinutes }),
+      body: json({ boardSize: 10, timeControlMinutes, pieceColor }),
     }),
-  matchmakingStatus: (timeControlMinutes: number) =>
+  matchmakingStatus: (timeControlMinutes: number, pieceColor: string) =>
     request<MatchmakingResult>(
-      `/matchmaking/status?boardSize=10&timeControlMinutes=${timeControlMinutes}`,
+      `/matchmaking/status?boardSize=10&timeControlMinutes=${timeControlMinutes}&pieceColor=${encodeURIComponent(pieceColor)}`,
     ),
   leaveMatchmaking: () =>
     request<void>("/matchmaking/leave", { method: "DELETE" }),
   activeGame: () =>
     request<{ game: Game | null }>("/online-games/active"),
   game: (id: string) => request<{ game: Game }>(`/online-games/${id}`),
+  updateGamePieceColors: (id: string, ownColor: string, opponentColor: string) =>
+    request<{ game: Game }>(`/online-games/${id}/piece-colors`, {
+      method: "PATCH",
+      body: json({ ownColor, opponentColor }),
+    }),
   spectatorGames: (offset = 0) =>
     request<{
       games: SpectatorGameSummary[];

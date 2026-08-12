@@ -22,6 +22,11 @@ export interface User {
   avatarUrl?: string | null;
   avatarVersion?: string | null;
   worldTitle?: WorldTitle | null;
+  premium?: {
+    active: boolean;
+    source: "app_store" | null;
+    expiresAt: string | null;
+  };
 }
 
 export interface Piece {

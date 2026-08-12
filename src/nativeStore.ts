@@ -22,6 +22,30 @@ export type NativePurchaseResult =
   | { state: "purchased"; transaction: NativeStoreTransaction }
   | { state: "pending" | "cancelled"; transaction?: never };
 
+export interface NativeSubscriptionStatus {
+  active: boolean;
+  productId: string;
+  expirationDate: string | null;
+  environment?: string;
+  transactionId?: string | null;
+  originalTransactionId?: string | null;
+  appAccountToken?: string | null;
+  signedTransactionInfo?: string | null;
+  signedRenewalInfo?: string | null;
+}
+
+export type NativeSubscriptionPurchaseResult =
+  | { state: "purchased"; subscription: NativeSubscriptionStatus }
+  | { state: "pending" | "cancelled"; subscription?: never };
+
+export interface NativeAdsStatus {
+  supported: boolean;
+  adFree: boolean;
+  canRequestAds: boolean;
+  privacyOptionsRequired: boolean;
+  environment: "development" | "production";
+}
+
 interface PluginListenerHandle {
   remove: () => Promise<void>;
 }
@@ -34,6 +58,13 @@ interface KingDamasStorePlugin {
     productId: string;
     appAccountToken: string;
   }) => Promise<NativePurchaseResult>;
+  subscriptionStatus: () => Promise<NativeSubscriptionStatus>;
+  purchaseSubscription: (options: {
+    productId: string;
+    appAccountToken: string;
+  }) => Promise<NativeSubscriptionPurchaseResult>;
+  restoreSubscriptions: () => Promise<NativeSubscriptionStatus>;
+  manageSubscriptions: () => Promise<{ presented: boolean }>;
   unfinishedTransactions: () => Promise<{
     transactions: NativeStoreTransaction[];
   }>;
@@ -46,18 +77,32 @@ interface KingDamasStorePlugin {
   ) => Promise<PluginListenerHandle>;
 }
 
+interface KingDamasAdsPlugin {
+  status: () => Promise<NativeAdsStatus>;
+  setPremiumStatus: (options: { active: boolean }) => Promise<{ active: boolean }>;
+  showInterstitial: () => Promise<{ shown: boolean; reason?: string }>;
+  showPrivacyOptions: () => Promise<{ presented: boolean }>;
+}
+
 declare global {
   interface Window {
     Capacitor?: {
       getPlatform?: () => string;
       isNativePlatform?: () => boolean;
-      Plugins?: { KingDamasStore?: KingDamasStorePlugin };
+      Plugins?: {
+        KingDamasStore?: KingDamasStorePlugin;
+        KingDamasAds?: KingDamasAdsPlugin;
+      };
     };
   }
 }
 
 function storePlugin() {
   return window.Capacitor?.Plugins?.KingDamasStore;
+}
+
+function adsPlugin() {
+  return window.Capacitor?.Plugins?.KingDamasAds;
 }
 
 export function isIOSNativeStoreAvailable() {
@@ -90,6 +135,65 @@ export async function purchaseNativeStoreProduct(
     throw new Error("App Store solo está disponible en la aplicación para iOS.");
   }
   return plugin.purchase({ productId, appAccountToken });
+}
+
+export async function nativeSubscriptionStatus() {
+  const plugin = storePlugin();
+  if (!isIOSNativeStoreAvailable() || !plugin) {
+    return { active: false, productId: "", expirationDate: null };
+  }
+  return plugin.subscriptionStatus();
+}
+
+export async function purchaseNativeSubscription(
+  productId: string,
+  appAccountToken: string,
+) {
+  const plugin = storePlugin();
+  if (!isIOSNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  }
+  return plugin.purchaseSubscription({ productId, appAccountToken });
+}
+
+export async function restoreNativeSubscriptions() {
+  const plugin = storePlugin();
+  if (!isIOSNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  }
+  return plugin.restoreSubscriptions();
+}
+
+export async function manageNativeSubscriptions() {
+  const plugin = storePlugin();
+  if (!isIOSNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  }
+  return (await plugin.manageSubscriptions()).presented;
+}
+
+export async function nativeAdsStatus() {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return null;
+  return plugin.status();
+}
+
+export async function setNativeAdsPremiumStatus(active: boolean) {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return false;
+  return (await plugin.setPremiumStatus({ active })).active;
+}
+
+export async function showNativeGameInterstitial() {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return false;
+  return (await plugin.showInterstitial()).shown;
+}
+
+export async function showNativeAdPrivacyOptions() {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return false;
+  return (await plugin.showPrivacyOptions()).presented;
 }
 
 export async function unfinishedNativeStoreTransactions() {

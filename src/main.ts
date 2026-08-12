@@ -29,6 +29,7 @@ import {
 import {
   PIECE_COLOR_OPTIONS,
   pieceColorPreferences,
+  pieceColorPreferencesForSide,
   pieceColorsFor,
   setPieceColorPreference,
   type PieceColor,
@@ -66,8 +67,16 @@ import {
   finishNativeStoreTransaction,
   isIOSNativeApp,
   listenForNativeStoreTransactions,
+  manageNativeSubscriptions,
+  nativeAdsStatus,
+  nativeSubscriptionStatus,
   nativeStoreProducts,
+  purchaseNativeSubscription,
   purchaseNativeStoreProduct,
+  restoreNativeSubscriptions,
+  setNativeAdsPremiumStatus,
+  showNativeAdPrivacyOptions,
+  showNativeGameInterstitial,
   unfinishedNativeStoreTransactions,
   type NativeStoreProduct,
   type NativeStoreTransaction,
@@ -129,8 +138,10 @@ let languageSaveQueue: Promise<void> = Promise.resolve();
 let nativeStoreRecoveryUserId: string | null = null;
 let nativeStoreListenerBound = false;
 const nativeStoreConfirmations = new Map<string, Promise<void>>();
+let premiumActive = false;
+let nativeAdPrivacyOptionsRequired = false;
 
-const LEGAL_CONSENT_VERSION = "2026-08-09";
+const LEGAL_CONSENT_VERSION = "2026-08-11";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
 const LEGAL_ROUTES = [
   { path: "/acerca-de", label: "Acerca de", shortLabel: "Acerca de" },
@@ -139,6 +150,53 @@ const LEGAL_ROUTES = [
   { path: "/terminos-y-condiciones", label: "Términos y condiciones", shortLabel: "Términos" },
   { path: "/politica-de-privacidad", label: "Política de privacidad", shortLabel: "Privacidad" },
 ] as const;
+
+function applyPremiumStatus(active: boolean, expiresAt: string | null = null) {
+  premiumActive = active;
+  document.documentElement.dataset.premium = String(active);
+  if (currentUser) {
+    currentUser = {
+      ...currentUser,
+      premium: {
+        active,
+        source: active ? "app_store" : null,
+        expiresAt,
+      },
+    };
+  }
+}
+
+async function syncAccountPremium(
+  subscription?: Awaited<ReturnType<typeof nativeSubscriptionStatus>>,
+  appAccountToken?: string | null,
+  strict = false,
+) {
+  if (
+    subscription?.active &&
+    subscription.appAccountToken &&
+    subscription.appAccountToken.toLowerCase() === appAccountToken?.toLowerCase()
+  ) {
+    await setNativeAdsPremiumStatus(true);
+  }
+  let response;
+  if (subscription?.signedTransactionInfo) {
+    try {
+      response = await api.syncAppStoreSubscription(
+        subscription.signedTransactionInfo,
+        subscription.signedRenewalInfo,
+      );
+    } catch (error) {
+      if (strict) throw error;
+      console.warn("La suscripción local no pertenece a esta cuenta; se usará el estado del servidor.", error);
+      response = await api.premiumStatus();
+    }
+  } else {
+    response = await api.premiumStatus();
+  }
+  applyPremiumStatus(response.premium.active, response.premium.expiresAt);
+  await setNativeAdsPremiumStatus(response.premium.active);
+  return response.premium;
+}
 type LegalPath = (typeof LEGAL_ROUTES)[number]["path"];
 
 const route = () => {
@@ -277,6 +335,7 @@ function bindNavigation() {
       await api.logout();
     } finally {
       currentUser = null;
+      applyPremiumStatus(false);
       currentRating = null;
       setSessionHint(false);
       socket?.disconnect();
@@ -438,6 +497,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
           <span><small>APOYA EL PROYECTO</small><b>${isIOSNativeApp() ? "Apoyar" : "Donar"}</b></span>
           <i aria-hidden="true">→</i>
         </button>
+        ${isIOSNativeApp() ? `<button class="nav-item sidebar-ad-free" type="button" data-route="/donar"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>` : ""}
         <button class="sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos"><span class="sidebar-credits-icon">©</span><span><b>Créditos</b><small>Autores y licencias</small></span><i aria-hidden="true">→</i></button>
         <button class="nav-item nav-item--logout" data-logout>${icon("logout")}<span>Cerrar sesión</span></button>
       </aside>
@@ -448,7 +508,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
           ${languageSelectorMarkup("language-selector--app")}
           <button class="account-chip" type="button" data-player-profile-link="${escapeHtml(currentUser.username)}" aria-label="Ver tu perfil">
             <span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--small">${avatar}</span>
-            <span class="account-copy"><span class="account-name-line"><b>${escapeHtml(currentUser.name)}</b>${worldTrophyMarkup(currentUser, "world-trophy--account")}</span><small>@${escapeHtml(currentUser.username)}</small></span>
+            <span class="account-copy"><span class="account-name-line"><b>${escapeHtml(currentUser.name)}</b>${worldTrophyMarkup(currentUser, "world-trophy--account")}</span><small>@${escapeHtml(currentUser.username)}${premiumActive ? " · Premium" : ""}</small></span>
             <span class="account-camera" aria-hidden="true">${icon("eye")}</span>
           </button>
         </header>
@@ -657,6 +717,7 @@ function bindAccountDeletionDialog() {
       await api.deleteAccount(confirmation);
       close();
       currentUser = null;
+      applyPremiumStatus(false);
       currentRating = null;
       setSessionHint(false);
       socket?.disconnect();
@@ -926,6 +987,7 @@ function bindAuthDialog() {
               password: String(data.get("password")),
             });
         currentUser = response.user;
+        applyPremiumStatus(Boolean(response.user.premium?.active), response.user.premium?.expiresAt || null);
         setSessionHint(true);
         dialog.close();
         if (isPasswordResetPath()) clearPasswordResetUrl();
@@ -1127,14 +1189,37 @@ async function initializeNativeStoreForUser(user: User) {
   nativeStoreRecoveryUserId = user.id;
   try {
     const config = await api.appStoreConfig();
-    if (!config.enabled) return;
-    const transactions = await unfinishedNativeStoreTransactions();
-    for (const transaction of transactions) {
-      await confirmAndFinishNativeTransaction(transaction);
+    const subscription = await nativeSubscriptionStatus();
+    await syncAccountPremium(subscription, config.appAccountToken);
+    const ads = await nativeAdsStatus();
+    nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
+    if (config.enabled) {
+      const transactions = await unfinishedNativeStoreTransactions();
+      for (const transaction of transactions) {
+        await confirmAndFinishNativeTransaction(transaction);
+      }
     }
   } catch (error) {
     console.warn("La recuperación de compras de App Store queda pendiente.", error);
   }
+}
+
+function showGameCompletionAd() {
+  if (!isIOSNativeApp()) return;
+  window.setTimeout(() => {
+    void (async () => {
+      try {
+        const { premium } = await api.premiumStatus();
+        applyPremiumStatus(premium.active, premium.expiresAt);
+        await setNativeAdsPremiumStatus(premium.active);
+        if (!premium.active) await showNativeGameInterstitial();
+      } catch (error) {
+        // Si el derecho no puede confirmarse, no arriesgamos mostrar publicidad
+        // a una cuenta que podría ser Premium.
+        console.warn("El anuncio de fin de partida no estuvo disponible.", error);
+      }
+    })();
+  }, 350);
 }
 
 async function loadPayPalSdk(clientId: string, currency: string) {
@@ -1204,8 +1289,10 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
 function iosSupportMarkup(
   config: AppStoreConfig,
   products: NativeStoreProduct[],
+  subscriptionActive: boolean,
 ) {
   const productById = new Map(products.map((product) => [product.id, product]));
+  const adFreeProduct = productById.get(config.products.adFreeAnnual.productId);
   const available = config.enabled && Boolean(config.appAccountToken) && products.length > 0;
   return `
     <section class="page-heading donation-heading">
@@ -1214,6 +1301,17 @@ function iosSupportMarkup(
     </section>
     <div class="donation-layout">
       <section class="panel donation-card">
+        <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
+          <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Un año sin anuncios en todas tus plataformas"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : "Elimina los anuncios en iOS, Android y web con la misma cuenta de King Damas. La suscripción se renueva automáticamente cada año hasta que la canceles."}</p></div>
+          ${subscriptionActive
+            ? `<button class="button button--quiet button--small" type="button" data-manage-ad-free>Administrar suscripción</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compras</button>`
+            : adFreeProduct && config.appAccountToken
+              ? `<button class="button button--primary" type="button" data-buy-ad-free="${escapeHtml(adFreeProduct.id)}">Suscribirme · ${escapeHtml(adFreeProduct.displayPrice)}/año</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compra</button>`
+              : `<small class="ios-ad-free-unavailable">La suscripción estará disponible cuando App Store termine de configurarla.</small>`}
+          <small class="ios-subscription-terms">El pago se cargará a tu Apple ID. La renovación automática puede cancelarse desde la configuración de suscripciones de App Store al menos 24 horas antes del próximo cobro. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
+          <p class="donation-error" data-ad-free-error aria-live="polite"></p>
+        </section>
         <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige una opción de apoyo</h2></div><span class="donation-currency">APP STORE</span></div>
         ${available ? `
           <div class="donation-amounts ios-support-options">
@@ -1239,6 +1337,7 @@ function iosSupportMarkup(
           <li><span>03</span><p><b>Comunidad competitiva</b><small>Un espacio gratuito para jugadores de damas.</small></p></li>
         </ul>
         <p class="donation-fair-play">El aporte es opcional, no desbloquea contenido y no modifica tu Elo Damas ni ofrece ventajas en las partidas.</p>
+        ${nativeAdPrivacyOptionsRequired ? `<button class="text-button ios-ad-privacy" type="button" data-ad-privacy-options>Opciones de privacidad de anuncios</button>` : ""}
       </aside>
     </div>`;
 }
@@ -1248,12 +1347,10 @@ function bindIOSSupport(config: AppStoreConfig) {
   const buttons = [
     ...root.querySelectorAll<HTMLButtonElement>("[data-ios-support-product]"),
   ];
-  if (!error || !config.appAccountToken || !buttons.length) return;
-
   const setDisabled = (disabled: boolean) => {
     buttons.forEach((button) => { button.disabled = disabled; });
   };
-  buttons.forEach((button) => {
+  if (error && config.appAccountToken && buttons.length) buttons.forEach((button) => {
     button.addEventListener("click", async () => {
       const productId = button.dataset.iosSupportProduct;
       if (!productId || !config.appAccountToken) return;
@@ -1293,6 +1390,65 @@ function bindIOSSupport(config: AppStoreConfig) {
       }
     });
   });
+
+  const subscriptionError = root.querySelector<HTMLElement>("[data-ad-free-error]");
+  const subscribeButton = root.querySelector<HTMLButtonElement>("[data-buy-ad-free]");
+  const restoreButton = root.querySelector<HTMLButtonElement>("[data-restore-ad-free]");
+  const manageButton = root.querySelector<HTMLButtonElement>("[data-manage-ad-free]");
+  subscribeButton?.addEventListener("click", async () => {
+    if (!config.appAccountToken || !subscribeButton.dataset.buyAdFree) return;
+    subscribeButton.disabled = true;
+    if (subscriptionError) subscriptionError.textContent = "";
+    try {
+      const result = await purchaseNativeSubscription(
+        subscribeButton.dataset.buyAdFree,
+        config.appAccountToken,
+      );
+      if (result.state === "cancelled") {
+        subscribeButton.disabled = false;
+        return;
+      }
+      if (result.state === "pending") {
+        if (subscriptionError) subscriptionError.textContent = "La suscripción espera aprobación de App Store.";
+        return;
+      }
+      if (result.state !== "purchased" || !result.subscription) return;
+      await syncAccountPremium(result.subscription, config.appAccountToken, true);
+      toast("Suscripción sin anuncios activada.");
+      await renderDonation();
+    } catch (subscriptionPurchaseError) {
+      subscribeButton.disabled = false;
+      if (subscriptionError) subscriptionError.textContent = errorMessage(subscriptionPurchaseError);
+    }
+  });
+  restoreButton?.addEventListener("click", async () => {
+    restoreButton.disabled = true;
+    if (subscriptionError) subscriptionError.textContent = "";
+    try {
+      const status = await restoreNativeSubscriptions();
+      const premium = await syncAccountPremium(status, config.appAccountToken, true);
+      toast(premium.active ? "Suscripción sin anuncios restaurada." : "No encontramos una suscripción activa.", premium.active ? "success" : "error");
+      await renderDonation();
+    } catch (restoreError) {
+      restoreButton.disabled = false;
+      if (subscriptionError) subscriptionError.textContent = errorMessage(restoreError);
+    }
+  });
+  manageButton?.addEventListener("click", async () => {
+    manageButton.disabled = true;
+    try {
+      await manageNativeSubscriptions();
+    } catch (manageError) {
+      toast(errorMessage(manageError), "error");
+    } finally {
+      manageButton.disabled = false;
+    }
+  });
+  root.querySelector("[data-ad-privacy-options]")?.addEventListener("click", () => {
+    void showNativeAdPrivacyOptions().catch((privacyError) => {
+      toast(errorMessage(privacyError), "error");
+    });
+  });
 }
 
 async function renderDonation() {
@@ -1303,10 +1459,17 @@ async function renderDonation() {
       const config = await api.appStoreConfig();
       const products = config.enabled
         ? await nativeStoreProducts(
-            config.products.support.map((product) => product.productId),
+            [
+              ...config.products.support.map((product) => product.productId),
+              config.products.adFreeAnnual.productId,
+            ],
           )
         : [];
-      root.innerHTML = appLayout(iosSupportMarkup(config, products), "donate");
+      const subscription = await nativeSubscriptionStatus();
+      const premium = await syncAccountPremium(subscription, config.appAccountToken);
+      const ads = await nativeAdsStatus();
+      nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
+      root.innerHTML = appLayout(iosSupportMarkup(config, products, premium.active), "donate");
       bindNavigation();
       bindIOSSupport(config);
       return;
@@ -1523,9 +1686,9 @@ function legalContactMarkup() {
 }
 
 function legalCookiesMarkup() {
-  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego.</p></aside>
+  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. La aplicación iOS puede utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones y puede gestionar datos conforme a sus propias políticas. Los audios, el tablero y los recursos visuales se proporcionan directamente desde King Damas.</p></section>
+    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones y puede gestionar datos conforme a sus propias políticas. En la aplicación para iOS, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -1535,7 +1698,7 @@ function legalTermsMarkup() {
     <section><h2>1. Aceptación y cuenta</h2><p>Al crear o utilizar una cuenta confirmas que puedes aceptar estas condiciones. Si eres menor de edad, debes contar con autorización y supervisión de tu padre, madre o tutor legal. Debes proporcionar información válida, proteger tus credenciales y responder por la actividad de tu cuenta.</p></section>
     <section><h2>2. Uso permitido</h2><p>King Damas está destinado al juego de damas internacionales 10×10, la interacción comunitaria y la participación en actividades anunciadas. No puedes automatizar partidas, manipular resultados o Elo, explotar fallos, suplantar a otra persona, acosar, amenazar ni publicar contenido ilícito.</p></section>
     <section><h2>3. Juego limpio y moderación</h2><p>Podemos investigar conductas irregulares y aplicar advertencias, anular resultados, limitar funciones o suspender cuentas cuando sea necesario para proteger a la comunidad. Las decisiones competitivas podrán revisarse cuando exista evidencia suficiente.</p></section>
-    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Las donaciones son voluntarias y no conceden ventajas competitivas. Los pagos habilitados son procesados por proveedores externos.</p></section>
+    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Las donaciones son voluntarias y no conceden ventajas competitivas. En iOS, la suscripción Premium es anual, se cobra a tu Apple ID y elimina anuncios al usar la misma cuenta King Damas en iOS, Android y web. Se renueva automáticamente salvo que la canceles al menos 24 horas antes de finalizar el periodo vigente. Puedes administrarla o cancelarla desde la configuración de suscripciones de App Store. Los precios y condiciones definitivos son los que App Store muestra antes de confirmar la compra.</p></section>
     <section><h2>5. Disponibilidad y cambios</h2><p>Trabajamos para ofrecer un servicio estable, pero no garantizamos funcionamiento ininterrumpido. Podemos realizar mantenimiento, corregir resultados afectados por errores técnicos y actualizar funciones o estas condiciones. Los cambios importantes serán comunicados dentro de la plataforma y podrán requerir una nueva aceptación.</p></section>
     <section><h2>6. Responsabilidad</h2><p>La plataforma se ofrece según su disponibilidad. En la medida permitida por la ley aplicable, King Damas no responde por interrupciones ajenas a su control, pérdidas indirectas ni decisiones tomadas con base en una clasificación provisional.</p></section>
     <section><h2>7. Legislación y contacto</h2><p>Estas condiciones se interpretan conforme a las leyes aplicables de la República Dominicana. Para preguntas o reclamaciones, escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a>. Puedes consultar como referencia la <a href="https://dgii.gov.do/legislacion/leyesTributarias/Documents/Otras%20Leyes%20de%20Inter%C3%A9s/126-02.pdf" target="_blank" rel="noreferrer">Ley 126-02 sobre comercio electrónico y documentos digitales ↗</a>.</p></section>`;
@@ -1543,10 +1706,10 @@ function legalTermsMarkup() {
 
 function legalPrivacyMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Compromiso de privacidad</b><p>Usamos los datos necesarios para operar la cuenta, las partidas y la comunidad. No vendemos información personal.</p></aside>
-    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico.</p></section>
+    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico. En iOS, Google Mobile Ads también puede tratar identificadores del dispositivo, dirección IP, interacciones con anuncios e información de diagnóstico según tu configuración de consentimiento y las opciones permitidas por Apple.</p></section>
     <section><h2>2. Para qué los utilizamos</h2><p>Los usamos para autenticarte, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar funciones comunitarias, gestionar torneos y pagos, atender solicitudes, prevenir abuso y mantener la seguridad y estabilidad del servicio.</p></section>
     <section><h2>3. Información visible</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran únicamente a sus participantes, salvo revisión necesaria por seguridad o cumplimiento.</p></section>
-    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos y procesar pagos. Algunos pueden procesar información fuera de la República Dominicana. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida.</p></section>
+    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos, procesar compras mediante Apple y mostrar anuncios mediante Google Mobile Ads. Algunos pueden procesar información fuera de la República Dominicana conforme a sus propias políticas y mecanismos legales. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida. Cuando corresponda, puedes revisar o cambiar las opciones de privacidad publicitaria desde la sección Apoyar de la aplicación iOS.</p></section>
     <section><h2>5. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para seguridad, resolución de disputas y obligaciones legales. Aplicamos controles técnicos y organizativos, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
     <section><h2>6. Tus derechos</h2><p>Puedes solicitar acceso, corrección, actualización o eliminación de tus datos, sujeto a las excepciones legales y registros que debamos conservar. Envía la solicitud desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
     <section><h2>7. Marco y actualizaciones</h2><p>Esta política toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Informaremos cambios relevantes y solicitaremos una nueva confirmación cuando corresponda.</p></section>`;
@@ -3436,7 +3599,10 @@ async function startMatchmaking() {
     void checkMatchmaking();
   }, 1500);
   try {
-    handleMatchmaking(await api.joinMatchmaking(selectedTime));
+    handleMatchmaking(await api.joinMatchmaking(
+      selectedTime,
+      pieceColorPreferences().own,
+    ));
   } catch (error) {
     await stopMatchmaking(false);
     toast(errorMessage(error), "error");
@@ -3451,7 +3617,10 @@ function updateSearchClock() {
 
 async function checkMatchmaking() {
   try {
-    handleMatchmaking(await api.matchmakingStatus(selectedTime));
+    handleMatchmaking(await api.matchmakingStatus(
+      selectedTime,
+      pieceColorPreferences().own,
+    ));
   } catch (error) {
     if (error instanceof ApiError && error.status === 401) await stopMatchmaking(false);
   }
@@ -3845,6 +4014,7 @@ async function renderLegendGame(
     aiWorker?.terminate();
     aiWorker = null;
     renderState();
+    showGameCompletionAd();
     if (nextWinner === humanSide && !victoryRecorded) {
       void recordLegendVictory();
     }
@@ -4199,7 +4369,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
   board = new CmCheckersboard(boardElement, {
     orientation: "ivory",
     playerSide: "ivory",
-    pieceColors: pieceColorsFor("ivory"),
+    pieceColors: game.pieceColors,
     onMove: () => {},
   });
 
@@ -4258,6 +4428,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
   const update = (next: SpectatorGame) => {
     const previousMoveCount = game.moveCount;
     game = next;
+    board?.setPieceColors(game.pieceColors);
     if (game.moveCount > previousMoveCount) playMoveSound(game.moves.at(-1)?.captures ?? 0);
     board?.update(game.board, game.currentPlayer, false);
     const pieces = countPieces(game.board);
@@ -4390,7 +4561,13 @@ function mountGame(initialGame: Game) {
         <section class="board-column">
           ${playerBar(opponent, opponentSide, "opponent", countPieces(game.board)[opponentSide].total)}
           <div class="board-shell"><div id="live-board"></div><div class="board-result-overlay" aria-hidden="true"></div></div>
-          ${playerBar(own, ownSide, "own", countPieces(game.board)[ownSide].total)}
+          ${playerBar(
+            own,
+            ownSide,
+            "own",
+            countPieces(game.board)[ownSide].total,
+            pieceColorPreferencesForSide(ownSide, game.pieceColors),
+          )}
           <div class="draw-offer"></div>
         </section>
         <aside class="game-sidebar">
@@ -4411,7 +4588,7 @@ function mountGame(initialGame: Game) {
   board = new CmCheckersboard(boardElement, {
     orientation: ownSide,
     playerSide: ownSide,
-    pieceColors: pieceColorsFor(ownSide),
+    pieceColors: game.pieceColors,
     onMove: async (move) => {
       if (submittingMove) return;
       submittingMove = true;
@@ -4434,8 +4611,13 @@ function mountGame(initialGame: Game) {
     const previousMoveCount = game.moveCount;
     const wasActive = game.status === "active";
     game = { ...next, playerColor: next.playerColor || ownSide };
+    board?.setPieceColors(game.pieceColors);
+    syncGamePieceColorControls(
+      pieceColorPreferencesForSide(ownSide, game.pieceColors),
+    );
     if (wasActive && game.status !== "active") {
       completedAt = Date.now();
+      if (game.status === "completed") showGameCompletionAd();
       root.querySelectorAll<HTMLElement>("[data-chat-cloud]").forEach((cloud) => {
         cloud.classList.remove("is-visible");
         cloud.setAttribute("aria-hidden", "true");
@@ -4667,8 +4849,19 @@ function mountGame(initialGame: Game) {
   bindGameSettings({
     onChat: openChat,
     onDraw: offerDraw,
-    onPieceColorsChange: (preferences) => {
-      board?.setPieceColors(pieceColorsFor(ownSide, preferences));
+    onPieceColorsChange: async (preferences) => {
+      try {
+        update((await api.updateGamePieceColors(
+          game.id,
+          preferences.own,
+          preferences.opponent,
+        )).game);
+      } catch (error) {
+        toast(errorMessage(error), "error");
+        syncGamePieceColorControls(
+          pieceColorPreferencesForSide(ownSide, game.pieceColors),
+        );
+      }
     },
     onResign: async () => {
       await finishByPlayer({
@@ -4864,10 +5057,32 @@ function pieceColorOptionsMarkup(selected: PieceColor) {
   )).join("");
 }
 
-function gameQuickActions(chatAvailable = true) {
+function pieceColorControlsPreferences(): PieceColorPreferences {
+  const fallback = pieceColorPreferences();
+  return {
+    own: (root.querySelector<HTMLSelectElement>("[data-piece-color=own]")
+      ?.value as PieceColor | undefined) || fallback.own,
+    opponent: (root.querySelector<HTMLSelectElement>("[data-piece-color=opponent]")
+      ?.value as PieceColor | undefined) || fallback.opponent,
+  };
+}
+
+function syncGamePieceColorControls(preferences: PieceColorPreferences) {
+  root.querySelectorAll<HTMLSelectElement>("[data-piece-color]").forEach((select) => {
+    const role = select.dataset.pieceColor as PieceColorRole;
+    select.value = preferences[role];
+    const option = PIECE_COLOR_OPTIONS.find((item) => item.key === preferences[role]);
+    root.querySelector<HTMLElement>(`[data-piece-color-swatch="${role}"]`)
+      ?.style.setProperty("--piece-swatch", option?.value || "transparent");
+  });
+}
+
+function gameQuickActions(
+  chatAvailable = true,
+  pieceColors = pieceColorPreferences(),
+) {
   const sounds = soundPreferences();
   const backgroundVolume = Math.round(sounds.backgroundVolume * 100);
-  const pieceColors = pieceColorPreferences();
   const ownColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.own)!;
   const opponentColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.opponent)!;
   return `<div class="player-quick-actions">
@@ -4896,7 +5111,7 @@ function gameQuickActions(chatAvailable = true) {
 function bindGameSettings(actions: {
   onChat?: () => void;
   onDraw?: () => void | Promise<void>;
-  onPieceColorsChange?: (preferences: PieceColorPreferences) => void;
+  onPieceColorsChange?: (preferences: PieceColorPreferences) => void | Promise<void>;
   onResign: () => void | Promise<void>;
   onNewGame: () => void | Promise<void>;
 }) {
@@ -4950,21 +5165,17 @@ function bindGameSettings(actions: {
     closeMenu();
     void actions.onNewGame();
   });
-  const syncPieceColorControls = (preferences: PieceColorPreferences) => {
-    root.querySelectorAll<HTMLSelectElement>("[data-piece-color]").forEach((select) => {
-      const role = select.dataset.pieceColor as PieceColorRole;
-      select.value = preferences[role];
-      const option = PIECE_COLOR_OPTIONS.find((item) => item.key === preferences[role]);
-      root.querySelector<HTMLElement>(`[data-piece-color-swatch="${role}"]`)
-        ?.style.setProperty("--piece-swatch", option?.value || "transparent");
-    });
-  };
   root.querySelectorAll<HTMLSelectElement>("[data-piece-color]").forEach((select) => {
     select.addEventListener("change", () => {
       const role = select.dataset.pieceColor as PieceColorRole;
-      const preferences = setPieceColorPreference(role, select.value as PieceColor);
-      syncPieceColorControls(preferences);
-      actions.onPieceColorsChange?.(preferences);
+      const current = pieceColorControlsPreferences();
+      const preferences = setPieceColorPreference(
+        role,
+        select.value as PieceColor,
+        current,
+      );
+      syncGamePieceColorControls(preferences);
+      void actions.onPieceColorsChange?.(preferences);
     });
   });
   const updateSwitch = (button: HTMLButtonElement, enabled: boolean) => {
@@ -4994,12 +5205,18 @@ function bindGameSettings(actions: {
   return closeMenu;
 }
 
-function playerBar(player: Game["players"][Side], side: Side, placement: string, pieces: number) {
+function playerBar(
+  player: Game["players"][Side],
+  side: Side,
+  placement: string,
+  pieces: number,
+  pieceColors = pieceColorPreferences(),
+) {
   return `<div class="player-bar player-bar--${placement}" data-player-bar="${side}">
     ${playerProfileButton(player, `${placement === "own" ? `<span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(player, "avatar avatar--player")}</span>` : avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)} ${placement === "own" ? "(Tú)" : ""}</b>${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span>`, "player-identity")}
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
-    ${placement === "own" ? gameQuickActions(true) : ""}
+    ${placement === "own" ? gameQuickActions(true, pieceColors) : ""}
     <div class="player-chat-cloud" data-chat-cloud="${side}" aria-live="polite" aria-hidden="true"><small></small><p></p></div>
   </div>`;
 }
@@ -5165,6 +5382,7 @@ async function handleAppLanguageChange(event: Event) {
 export async function startApp(user: User | null) {
   if (user?.language) useUserLanguage(user.language);
   currentUser = user;
+  applyPremiumStatus(Boolean(user?.premium?.active), user?.premium?.expiresAt || null);
   bindPlayerProfileNavigation();
   if (!routeListenerBound) {
     window.addEventListener("hashchange", () => void handleHashChange());

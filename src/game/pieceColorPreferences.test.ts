@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PIECE_COLOR_PREFERENCES,
   normalizePieceColorPreferences,
+  pieceColorPreferencesForSide,
   pieceColorsFor,
 } from "./pieceColorPreferences";
 
@@ -30,6 +31,18 @@ describe("preferencias de color de las fichas", () => {
     expect(pieceColorsFor("mahogany", preferences)).toEqual({
       ivory: "madera",
       mahogany: "rojo",
+    });
+  });
+
+  it("interpreta los colores compartidos desde la perspectiva de cada jugador", () => {
+    const shared = { ivory: "blanca", mahogany: "negra" } as const;
+    expect(pieceColorPreferencesForSide("ivory", shared)).toEqual({
+      own: "blanca",
+      opponent: "negra",
+    });
+    expect(pieceColorPreferencesForSide("mahogany", shared)).toEqual({
+      own: "negra",
+      opponent: "blanca",
     });
   });
 });
