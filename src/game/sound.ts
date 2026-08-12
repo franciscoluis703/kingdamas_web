@@ -4,25 +4,12 @@ const BACKGROUND_VOLUME_KEY = "kingdamas-background-volume";
 const BACKGROUND_TRACK_URL = "/audio/cozy-puzzle-clear-mix.mp3";
 const MOVE_SOUND_URL = "/audio/move.m4a";
 const CAPTURE_SOUND_URL = "/audio/capture.m4a";
-const INTERFACE_SOUND_URL = "/audio/menu-click.m4a";
 
 const DEFAULT_MOVE_SOUND = true;
 const DEFAULT_BACKGROUND_SOUND = true;
 const DEFAULT_BACKGROUND_VOLUME = 0.2;
 const MOVE_EFFECT_VOLUME = 0.1;
 const CAPTURE_EFFECT_VOLUME = 0.45;
-const INTERFACE_EFFECT_VOLUME = 0.55;
-const INTERFACE_CONTROL_SELECTOR = [
-  "button:not([disabled])",
-  "a[href]",
-  "input:not([disabled]):not([type='range']):not([type='file'])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  "[role='button']:not([aria-disabled='true'])",
-  "[role='tab']:not([aria-disabled='true'])",
-  "[role='switch']:not([aria-disabled='true'])",
-  "[data-interface-sound='on']",
-].join(",");
 
 export const AUDIO_CREDITS = Object.freeze({
   title: "Cozy Puzzle (Clear Mix)",
@@ -52,8 +39,6 @@ export const AUDIO_CREDITS = Object.freeze({
 let backgroundTrack: HTMLAudioElement | null = null;
 let backgroundRequested = false;
 let unlockListenersAttached = false;
-let interfaceSoundsInstalled = false;
-let lastInterfaceSoundAt = 0;
 const effects = new Map<string, HTMLAudioElement>();
 
 function stored(key: string, fallback: boolean) {
@@ -132,28 +117,7 @@ function playEffect(url: string, volume: number) {
 
 export function setMoveSound(enabled: boolean) {
   localStorage.setItem(MOVE_SOUND_KEY, enabled ? "on" : "off");
-  if (enabled) playInterfaceSound();
-}
-
-export function playInterfaceSound() {
-  if (!stored(MOVE_SOUND_KEY, DEFAULT_MOVE_SOUND)) return;
-  playEffect(INTERFACE_SOUND_URL, INTERFACE_EFFECT_VOLUME);
-}
-
-function handleInterfaceClick(event: MouseEvent) {
-  if (!event.isTrusted || event.button !== 0 || !(event.target instanceof Element)) return;
-  const control = event.target.closest<HTMLElement>(INTERFACE_CONTROL_SELECTOR);
-  if (!control || control.closest(".cm-checkersboard, [data-interface-sound='off']")) return;
-  const now = performance.now();
-  if (now - lastInterfaceSoundAt < 45) return;
-  lastInterfaceSoundAt = now;
-  playInterfaceSound();
-}
-
-export function installInterfaceSounds() {
-  if (interfaceSoundsInstalled) return;
-  interfaceSoundsInstalled = true;
-  document.addEventListener("click", handleInterfaceClick, true);
+  if (enabled) playMoveSound();
 }
 
 export function playCaptureSound(captures = 1) {

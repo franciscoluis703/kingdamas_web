@@ -481,7 +481,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
   const avatar = avatarMarkup(currentUser, "avatar avatar--small");
   return `
     <div class="app-shell">
-      <aside class="sidebar" data-interface-sound="off">
+      <aside class="sidebar">
         <div class="sidebar-brand brand">${logoMarkup()}</div>
         <nav class="sidebar-nav" aria-label="Navegación de la cuenta">
           <button class="nav-item ${active === "home" ? "is-active" : ""}" data-route="/inicio">${icon("home")}<span>Inicio</span></button>
@@ -514,7 +514,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
         </header>
         <main class="app-content">${content}</main>
       </div>
-      <nav class="bottom-nav" aria-label="Navegación móvil" data-interface-sound="off">
+      <nav class="bottom-nav" aria-label="Navegación móvil">
         <button class="${active === "home" ? "is-active" : ""}" data-route="/inicio">${icon("home")}<span>Inicio</span></button>
         <button class="bottom-nav-play ${active === "game" ? "is-active" : ""}" data-route="/jugar">${icon("play")}<span>Jugar</span></button>
         <button class="${active === "ranking" ? "is-active" : ""}" data-route="/clasificacion">${icon("ranking")}<span>Ranking</span></button>
@@ -5100,7 +5100,7 @@ function gameQuickActions(
         </div>
         <small>Los dos lados siempre usan colores diferentes.</small>
       </div>
-      <div class="settings-toggle-row"><span>${icon("volume")}<b>Interfaz y jugadas</b></span><button type="button" role="switch" aria-label="Sonidos de interfaz, movimientos y capturas" aria-checked="${sounds.moves}" class="mini-switch ${sounds.moves ? "is-on" : ""}" data-move-sound><i></i></button></div>
+      <div class="settings-toggle-row"><span>${icon("volume")}<b>Movimientos y capturas</b></span><button type="button" role="switch" aria-label="Sonidos de movimientos y capturas" aria-checked="${sounds.moves}" class="mini-switch ${sounds.moves ? "is-on" : ""}" data-move-sound><i></i></button></div>
       <div class="settings-toggle-row"><span><i class="settings-symbol">♫</i><b>Música de fondo</b></span><button type="button" role="switch" aria-label="Música de fondo" aria-checked="${sounds.background}" class="mini-switch ${sounds.background ? "is-on" : ""}" data-background-sound><i></i></button></div>
       <label class="settings-volume-row"><span><i>♪</i><b>Volumen</b></span><span class="volume-slider"><input type="range" min="0" max="100" step="5" value="${backgroundVolume}" aria-label="Volumen de la música de fondo" data-background-volume style="--volume-progress:${backgroundVolume}%" /><output data-background-volume-output>${backgroundVolume}%</output></span></label>
       <button type="button" data-settings-new><span>${icon("refresh")}</span><b>Nueva partida</b></button>
