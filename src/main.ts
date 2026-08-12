@@ -481,7 +481,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
   const avatar = avatarMarkup(currentUser, "avatar avatar--small");
   return `
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" data-interface-sound="off">
         <div class="sidebar-brand brand">${logoMarkup()}</div>
         <nav class="sidebar-nav" aria-label="Navegación de la cuenta">
           <button class="nav-item ${active === "home" ? "is-active" : ""}" data-route="/inicio">${icon("home")}<span>Inicio</span></button>
@@ -514,7 +514,7 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
         </header>
         <main class="app-content">${content}</main>
       </div>
-      <nav class="bottom-nav" aria-label="Navegación móvil">
+      <nav class="bottom-nav" aria-label="Navegación móvil" data-interface-sound="off">
         <button class="${active === "home" ? "is-active" : ""}" data-route="/inicio">${icon("home")}<span>Inicio</span></button>
         <button class="bottom-nav-play ${active === "game" ? "is-active" : ""}" data-route="/jugar">${icon("play")}<span>Jugar</span></button>
         <button class="${active === "ranking" ? "is-active" : ""}" data-route="/clasificacion">${icon("ranking")}<span>Ranking</span></button>
