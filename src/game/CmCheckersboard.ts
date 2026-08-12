@@ -1,4 +1,3 @@
-import { POINTER_EVENTS } from "cm-chessboard";
 import type { BoardState, LegalMove, Position, Side } from "../types";
 import { destination, getLegalMoves, playableNumber, samePosition } from "./engine";
 
@@ -22,7 +21,7 @@ export class CmCheckersboard {
   private enabled = false;
   private busy = false;
   private readonly squares: HTMLButtonElement[] = [];
-  private readonly pointerEvent = POINTER_EVENTS.pointerdown || "pointerdown";
+  private readonly pointerEvent = "pointerdown";
 
   constructor(
     private readonly element: HTMLElement,

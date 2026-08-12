@@ -1016,6 +1016,10 @@ a { color: inherit; text-decoration: none; }
 .profile-following-more { padding: 12px 8px 4px; display: grid; justify-items: center; gap: 7px; }
 .profile-following-more .button { min-width: 130px; }
 .profile-following-more small { color: #71867b; font-size: 10px; }
+.live-games-grid > .profile-following-more,
+.tournament-participants-grid > .profile-following-more { grid-column: 1 / -1; }
+.chat-messages > .profile-following-more,
+.direct-chat-messages > .community-list-more { align-self: stretch; display: grid; justify-items: center; padding: 4px 0 8px; }
 .profile-following-loading, .profile-following-empty { min-height: 250px; display: grid; place-content: center; justify-items: center; color: #71867b; text-align: center; }
 .profile-following-loading p, .profile-following-empty p { max-width: 300px; margin: 7px 0 0; font-size: 11px; line-height: 1.5; }
 .profile-following-empty > span { width: 47px; height: 47px; margin-bottom: 10px; display: grid; place-items: center; color: var(--green-bright); border-radius: 50%; background: rgba(53,211,148,.075); }

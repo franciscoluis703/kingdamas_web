@@ -38,7 +38,7 @@ export function avatarMarkup(user: { name: string; avatarUrl?: string | null }, 
     avatarUrl = new URL(avatarUrl, API_URL).toString();
   }
   return avatarUrl
-    ? `<img class="${className}" src="${escapeHtml(avatarUrl)}" alt="" />`
+    ? `<img class="${className}" src="${escapeHtml(avatarUrl)}" alt="" width="512" height="512" loading="lazy" decoding="async" />`
     : `<span class="${className} avatar--fallback" aria-hidden="true">${escapeHtml(initials(user.name))}</span>`;
 }
 

@@ -1,6 +1,6 @@
 import type { Socket } from "socket.io-client";
 import "./styles.css";
-import { api, ApiError, type AppStoreConfig } from "./api";
+import { api, ApiError, LIST_PAGE_SIZE, type AppStoreConfig } from "./api";
 import { PUBLIC_APP_URL, SOCKET_URL, TIME_CONTROLS, type TimeControl } from "./config";
 import { ELO_TIERS, eloTier, eloTierRange } from "./eloTiers";
 import { CmCheckersboard } from "./game/CmCheckersboard";
@@ -928,12 +928,9 @@ function bindAuthDialog() {
         currentUser = response.user;
         setSessionHint(true);
         dialog.close();
-        await Promise.all([
-          connectRealtime(),
-          initializeNativeStoreForUser(response.user),
-        ]);
         if (isPasswordResetPath()) clearPasswordResetUrl();
         navigate("/inicio");
+        scheduleBackgroundServices(response.user, 500);
         toast(`Bienvenido, ${currentUser.name}.`);
       } catch (requestError) {
         if (error) error.textContent = errorMessage(requestError);
@@ -1616,38 +1613,57 @@ function communityConversationMarkup(conversation: DirectConversation) {
   </article>`;
 }
 
+function communityListMoreMarkup(
+  kind: "friends" | "discovery" | "conversations" | "tournament-participants" | "live-games" | "game-messages",
+  hasMore: boolean,
+) {
+  return hasMore
+    ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-load-more-${kind}>Ver ${LIST_PAGE_SIZE} más</button></div>`
+    : "";
+}
+
 function communityMarkup(
   friends: User[],
   discovery: LeaderboardPlayer[],
   conversations: DirectConversation[],
   totalPlayers: number,
   registeredUsers: number,
+  pagination: {
+    friendsTotal: number;
+    friendsHasMore: boolean;
+    discoveryHasMore: boolean;
+    conversationsHasMore: boolean;
+    unreadCount: number;
+  },
 ) {
   const friendNames = new Set(friends.map((friend) => friend.username));
-  const visibleDiscovery = discovery.filter((player) => player.id !== currentUser?.id).slice(0, 8);
+  const visibleDiscovery = discovery.filter((player) => player.id !== currentUser?.id);
   return `
     <section class="page-heading community-heading">
       <div><span class="eyebrow"><i></i>JUGADORES DE KING DAMAS</span><h1>Comunidad</h1><span class="community-registered-count" aria-label="${registeredUsers.toLocaleString(localeCode())} usuarios registrados"><b>${registeredUsers.toLocaleString(localeCode())}</b></span><p>Encuentra rivales, crea tu círculo y mantén la conversación fuera del tablero.</p></div>
-      <div class="community-stats"><span><b>${totalPlayers.toLocaleString(localeCode())}</b><small>Clasificados</small></span><span><b data-community-friend-count>${friends.length}</b><small>Amigos</small></span><span><b data-community-unread-count>${conversations.reduce((total, item) => total + item.unreadCount, 0)}</b><small>Sin leer</small></span></div>
+      <div class="community-stats"><span><b>${totalPlayers.toLocaleString(localeCode())}</b><small>Clasificados</small></span><span><b data-community-friend-count>${pagination.friendsTotal}</b><small>Amigos</small></span><span><b data-community-unread-count>${pagination.unreadCount}</b><small>Sin leer</small></span></div>
     </section>
     <label class="community-search"><span>${icon("search")}</span><input type="search" autocomplete="off" minlength="2" maxlength="60" placeholder="Buscar por nombre o @usuario…" data-community-search /><kbd>Buscar</kbd></label>
     <div class="community-grid">
       <section class="panel community-panel community-friends">
-        <div class="community-panel-heading"><span><small>TU CÍRCULO</small><h2>Amigos</h2></span><b data-community-friend-count>${friends.length}</b></div>
+        <div class="community-panel-heading"><span><small>TU CÍRCULO</small><h2>Amigos</h2></span><b data-community-friend-count>${pagination.friendsTotal}</b></div>
         <div class="community-player-list" data-friends-list>
           ${friends.length ? friends.map((player) => communityPlayerMarkup(player, true, "friends")).join("") : `<div class="community-empty"><span>${icon("users")}</span><b>Tu círculo comienza aquí</b><p>Busca jugadores y agrégalos para encontrarlos rápidamente.</p></div>`}
+          ${communityListMoreMarkup("friends", pagination.friendsHasMore)}
         </div>
       </section>
       <section class="panel community-panel community-discover">
         <div class="community-panel-heading"><span><small data-discovery-kicker>CLASIFICACIÓN MUNDIAL</small><h2 data-discovery-title>Descubrir jugadores</h2></span><span class="community-live"><i></i>Activa</span></div>
         <div class="community-player-list" data-discovery-list>
           ${visibleDiscovery.length ? visibleDiscovery.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("") : `<div class="community-empty"><span>${icon("search")}</span><b>No hay jugadores para mostrar</b><p>Usa la búsqueda para encontrar a alguien.</p></div>`}
+          ${communityListMoreMarkup("discovery", pagination.discoveryHasMore)}
         </div>
       </section>
       <section class="panel community-panel community-conversations">
-        <div class="community-panel-heading"><span><small>MENSAJES PRIVADOS</small><h2>Conversaciones</h2></span><b data-conversation-unread-label ${conversations.some((item) => item.unreadCount) ? "" : "hidden"}>${conversations.reduce((total, item) => total + item.unreadCount, 0)} nuevos</b></div>
+        <div class="community-panel-heading"><span><small>MENSAJES PRIVADOS</small><h2>Conversaciones</h2></span><b data-conversation-unread-label ${pagination.unreadCount ? "" : "hidden"}>${pagination.unreadCount} nuevos</b></div>
         <div class="conversation-list" data-conversation-list>
           ${conversations.length ? conversations.map(communityConversationMarkup).join("") : `<div class="community-empty community-empty--compact"><span>${icon("chat")}</span><b>Aún no hay mensajes</b><p>Abre una conversación desde cualquier jugador.</p></div>`}
+          ${communityListMoreMarkup("conversations", pagination.conversationsHasMore)}
         </div>
       </section>
     </div>
@@ -1678,13 +1694,21 @@ async function renderCommunity() {
         conversationsResponse.conversations,
         leaderboardResponse.totalPlayers,
         statsResponse.registeredUsers,
+        {
+          friendsTotal: friendsResponse.total,
+          friendsHasMore: friendsResponse.hasMore,
+          discoveryHasMore: leaderboardResponse.hasMore,
+          conversationsHasMore: conversationsResponse.hasMore,
+          unreadCount: conversationsResponse.unreadCount,
+        },
       ),
       "community",
     );
     bindNavigation();
     bindCommunity(
-      friendsResponse.users,
-      leaderboardResponse.players,
+      friendsResponse,
+      leaderboardResponse,
+      conversationsResponse,
     );
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "community");
@@ -1693,7 +1717,11 @@ async function renderCommunity() {
   }
 }
 
-function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
+function bindCommunity(
+  initialFriends: Awaited<ReturnType<typeof api.following>>,
+  initialDiscovery: Awaited<ReturnType<typeof api.leaderboard>>,
+  initialConversations: Awaited<ReturnType<typeof api.conversations>>,
+) {
   const search = root.querySelector<HTMLInputElement>("[data-community-search]");
   const friendsList = root.querySelector<HTMLElement>("[data-friends-list]");
   const discoveryList = root.querySelector<HTMLElement>("[data-discovery-list]");
@@ -1705,23 +1733,39 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   const directMessages = dialog?.querySelector<HTMLElement>("[data-direct-chat-messages]");
   const directForm = dialog?.querySelector<HTMLFormElement>("[data-direct-chat-form]");
   const directError = dialog?.querySelector<HTMLElement>("[data-direct-chat-error]");
-  const friendNames = new Set(friends.map((friend) => friend.username));
+  const friendNames = new Set(initialFriends.users.map((friend) => friend.username));
   const knownPlayers = new Map<string, User>(
-    [...friends, ...initialDiscovery].map((player) => [player.username, player]),
+    [...initialFriends.users, ...initialDiscovery.players].map((player) => [player.username, player]),
   );
-  let friendList = [...friends];
-  let visibleDiscovery: Array<User & { rating?: number }> = [...initialDiscovery];
+  let friendList = [...initialFriends.users];
+  let friendTotal = initialFriends.total;
+  let friendsOffset = initialFriends.nextOffset;
+  let friendsHaveMore = initialFriends.hasMore;
+  const discoveryPlayers: Array<User & { rating?: number }> = [...initialDiscovery.players];
+  let discoveryOffset = initialDiscovery.nextOffset;
+  let discoveryHasMore = initialDiscovery.hasMore;
+  let visibleDiscovery: Array<User & { rating?: number }> = [...discoveryPlayers];
+  let activeSearchQuery = "";
+  let discoverySearchOffset = 0;
+  let discoverySearchHasMore = false;
+  let conversationItems = [...initialConversations.conversations];
+  let conversationOffset = initialConversations.nextOffset;
+  let conversationsHaveMore = initialConversations.hasMore;
+  let conversationUnreadCount = initialConversations.unreadCount;
   let discoverySearching = false;
   let searchTimer = 0;
   let searchSequence = 0;
   let activeUsername = "";
   let activeMessages: DirectMessage[] = [];
+  let activeMessageOffset = 0;
+  let activeMessagesHaveMore = false;
+  let olderMessagesLoading = false;
   let conversationLoading = false;
   let conversationListLoading = false;
 
   const updateFriendCounts = () => {
     root.querySelectorAll<HTMLElement>("[data-community-friend-count]").forEach((element) => {
-      element.textContent = String(friendList.length);
+      element.textContent = String(friendTotal);
     });
   };
 
@@ -1736,6 +1780,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
           const player = knownPlayers.get(username);
           if (player && !friendList.some((friend) => friend.username === username)) {
             friendList.push(player);
+            friendTotal += 1;
           }
           renderFriends();
           renderDiscovery(visibleDiscovery, discoverySearching);
@@ -1752,8 +1797,12 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
         button.disabled = true;
         try {
           await api.unfollow(username);
-          friendNames.delete(username);
+          const wasFriend = friendNames.delete(username);
           friendList = friendList.filter((friend) => friend.username !== username);
+          if (wasFriend) {
+            friendTotal = Math.max(0, friendTotal - 1);
+            friendsOffset = Math.max(0, friendsOffset - 1);
+          }
           renderFriends();
           renderDiscovery(visibleDiscovery, discoverySearching);
           toast(`@${username} fue eliminado de tus amigos.`);
@@ -1771,10 +1820,11 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   const renderFriends = () => {
     if (!friendsList) return;
     friendsList.innerHTML = friendList.length
-      ? friendList.map((player) => communityPlayerMarkup(player, true, "friends")).join("")
+      ? `${friendList.map((player) => communityPlayerMarkup(player, true, "friends")).join("")}${communityListMoreMarkup("friends", friendsHaveMore)}`
       : `<div class="community-empty"><span>${icon("users")}</span><b>Tu círculo comienza aquí</b><p>Busca jugadores y agrégalos para encontrarlos rápidamente.</p></div>`;
     updateFriendCounts();
     bindPlayerActions(friendsList);
+    bindCommunityLoaders();
   };
 
   const renderDiscovery = (players: Array<User & { rating?: number }>, searching: boolean) => {
@@ -1782,37 +1832,152 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     visibleDiscovery = players;
     discoverySearching = searching;
     players.forEach((player) => knownPlayers.set(player.username, player));
-    const visible = players.filter((player) => player.id !== currentUser?.id).slice(0, 20);
+    const visible = players.filter((player) => player.id !== currentUser?.id);
     discoveryList.innerHTML = visible.length
-      ? visible.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("")
+      ? `${visible.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("")}${communityListMoreMarkup("discovery", searching ? discoverySearchHasMore : discoveryHasMore)}`
       : `<div class="community-empty"><span>${icon("search")}</span><b>No encontramos jugadores</b><p>Prueba con otro nombre o usuario.</p></div>`;
     if (discoveryTitle) discoveryTitle.textContent = searching ? "Resultados" : "Descubrir jugadores";
     if (discoveryKicker) discoveryKicker.textContent = searching ? "BÚSQUEDA DE JUGADORES" : "CLASIFICACIÓN MUNDIAL";
     bindPlayerActions(discoveryList);
+    bindCommunityLoaders();
   };
 
-  const renderDirectMessages = (messages: DirectMessage[]) => {
+  const renderDirectMessages = (messages: DirectMessage[], scrollToBottom = true) => {
     if (!directMessages) return;
     directMessages.innerHTML = messages.length
-      ? messages.map((message) => `<article class="direct-message ${message.own ? "is-own" : ""}"><p>${escapeHtml(message.message)}</p><time>${new Date(message.createdAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></article>`).join("")
+      ? `${activeMessagesHaveMore ? `<div class="community-list-more"><button class="button button--quiet button--small" type="button" data-load-older-direct>Ver ${LIST_PAGE_SIZE} anteriores</button></div>` : ""}${messages.map((message) => `<article class="direct-message ${message.own ? "is-own" : ""}"><p>${escapeHtml(message.message)}</p><time>${new Date(message.createdAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></article>`).join("")}`
       : `<div class="direct-chat-empty"><span>${icon("chat")}</span><p>Inicia la conversación con un saludo.</p></div>`;
-    directMessages.scrollTop = directMessages.scrollHeight;
+    directMessages.querySelector<HTMLButtonElement>("[data-load-older-direct]")
+      ?.addEventListener("click", () => void loadOlderDirectMessages());
+    if (scrollToBottom) directMessages.scrollTop = directMessages.scrollHeight;
   };
+
+  async function loadOlderDirectMessages() {
+    if (!activeUsername || !activeMessagesHaveMore || olderMessagesLoading || !directMessages) return;
+    olderMessagesLoading = true;
+    const button = directMessages.querySelector<HTMLButtonElement>("[data-load-older-direct]");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cargando…";
+    }
+    const previousHeight = directMessages.scrollHeight;
+    try {
+      const response = await api.directMessages(activeUsername, activeMessageOffset);
+      if (response.user.username !== activeUsername) return;
+      const knownIds = new Set(activeMessages.map((message) => message.id));
+      activeMessages = [
+        ...response.messages.filter((message) => !knownIds.has(message.id)),
+        ...activeMessages,
+      ];
+      activeMessageOffset = response.nextOffset;
+      activeMessagesHaveMore = response.hasMore;
+      renderDirectMessages(activeMessages, false);
+      directMessages.scrollTop = directMessages.scrollHeight - previousHeight;
+    } catch (error) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = `Ver ${LIST_PAGE_SIZE} anteriores`;
+      }
+      if (directError) directError.textContent = errorMessage(error);
+    } finally {
+      olderMessagesLoading = false;
+    }
+  }
 
   const renderConversationList = (conversations: DirectConversation[]) => {
     if (!conversationList) return;
     conversationList.innerHTML = conversations.length
-      ? conversations.map(communityConversationMarkup).join("")
+      ? `${conversations.map(communityConversationMarkup).join("")}${communityListMoreMarkup("conversations", conversationsHaveMore)}`
       : `<div class="community-empty community-empty--compact"><span>${icon("chat")}</span><b>Aún no hay mensajes</b><p>Abre una conversación desde cualquier jugador.</p></div>`;
-    const unreadCount = conversations.reduce((total, item) => total + item.unreadCount, 0);
     const unreadStat = root.querySelector<HTMLElement>("[data-community-unread-count]");
     const unreadLabel = root.querySelector<HTMLElement>("[data-conversation-unread-label]");
-    if (unreadStat) unreadStat.textContent = String(unreadCount);
+    if (unreadStat) unreadStat.textContent = String(conversationUnreadCount);
     if (unreadLabel) {
-      unreadLabel.hidden = unreadCount === 0;
-      unreadLabel.textContent = `${unreadCount} nuevos`;
+      unreadLabel.hidden = conversationUnreadCount === 0;
+      unreadLabel.textContent = `${conversationUnreadCount} nuevos`;
     }
     bindPlayerActions(conversationList);
+    bindCommunityLoaders();
+  };
+
+  const bindCommunityLoaders = () => {
+    friendsList?.querySelector<HTMLButtonElement>("[data-load-more-friends]")
+      ?.addEventListener("click", async (event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = true;
+        button.textContent = "Cargando…";
+        try {
+          const page = await api.following(currentUser!.username, friendsOffset);
+          page.users.forEach((player) => {
+            friendNames.add(player.username);
+            knownPlayers.set(player.username, player);
+            if (!friendList.some((friend) => friend.id === player.id)) friendList.push(player);
+          });
+          friendTotal = page.total;
+          friendsOffset = page.nextOffset;
+          friendsHaveMore = page.hasMore;
+          renderFriends();
+          renderDiscovery(visibleDiscovery, discoverySearching);
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+          toast(errorMessage(error), "error");
+        }
+      });
+    discoveryList?.querySelector<HTMLButtonElement>("[data-load-more-discovery]")
+      ?.addEventListener("click", async (event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = true;
+        button.textContent = "Cargando…";
+        try {
+          if (discoverySearching) {
+            const page = await api.searchUsers(activeSearchQuery, discoverySearchOffset);
+            const knownIds = new Set(visibleDiscovery.map((player) => player.id));
+            const nextPlayers = [
+              ...visibleDiscovery,
+              ...page.users.filter((player) => !knownIds.has(player.id)),
+            ];
+            discoverySearchOffset = page.nextOffset;
+            discoverySearchHasMore = page.hasMore;
+            renderDiscovery(nextPlayers, true);
+            return;
+          }
+          const page = await api.leaderboard("WORLD", discoveryOffset);
+          page.players.forEach((player) => {
+            knownPlayers.set(player.username, player);
+            if (!discoveryPlayers.some((known) => known.id === player.id)) discoveryPlayers.push(player);
+          });
+          discoveryOffset = page.nextOffset;
+          discoveryHasMore = page.hasMore;
+          renderDiscovery(discoveryPlayers, false);
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+          toast(errorMessage(error), "error");
+        }
+      });
+    conversationList?.querySelector<HTMLButtonElement>("[data-load-more-conversations]")
+      ?.addEventListener("click", async (event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        button.disabled = true;
+        button.textContent = "Cargando…";
+        try {
+          const page = await api.conversations(conversationOffset);
+          page.conversations.forEach((conversation) => {
+            if (!conversationItems.some((known) => known.user.id === conversation.user.id)) {
+              conversationItems.push(conversation);
+            }
+          });
+          conversationOffset = page.nextOffset;
+          conversationsHaveMore = page.hasMore;
+          conversationUnreadCount = page.unreadCount;
+          renderConversationList(conversationItems);
+        } catch (error) {
+          button.disabled = false;
+          button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+          toast(errorMessage(error), "error");
+        }
+      });
   };
 
   const refreshConversationList = async () => {
@@ -1820,7 +1985,13 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     conversationListLoading = true;
     try {
       const response = await api.conversations();
-      if (route() === "/comunidad") renderConversationList(response.conversations);
+      if (route() === "/comunidad") {
+        conversationItems = response.conversations;
+        conversationOffset = response.nextOffset;
+        conversationsHaveMore = response.hasMore;
+        conversationUnreadCount = response.unreadCount;
+        renderConversationList(conversationItems);
+      }
     } catch {
       // Un próximo mensaje o la siguiente visita vuelve a sincronizar la lista.
     } finally {
@@ -1836,6 +2007,8 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
       if (!dialog.open || response.user.username !== activeUsername) return;
       if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b id="direct-chat-name">${escapeHtml(response.user.name)}</b>${worldTrophyMarkup(response.user)}</span><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small>${worldTitleRecognitionMarkup(response.user, "world-title-recognition--compact")}</span>`, "direct-chat-player-profile");
       activeMessages = response.messages;
+      activeMessageOffset = response.nextOffset;
+      activeMessagesHaveMore = response.hasMore;
       renderDirectMessages(activeMessages);
     } catch (error) {
       if (directError) directError.textContent = errorMessage(error);
@@ -1847,12 +2020,17 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   const closeConversation = () => {
     activeUsername = "";
     activeMessages = [];
+    activeMessageOffset = 0;
+    activeMessagesHaveMore = false;
     dialog?.close();
   };
 
   const openConversation = async (username: string) => {
     if (!dialog || !username) return;
     activeUsername = username;
+    activeMessages = [];
+    activeMessageOffset = 0;
+    activeMessagesHaveMore = false;
     if (directUser) directUser.innerHTML = `<span><b id="direct-chat-name">Cargando…</b><small>@${escapeHtml(username)}</small></span>`;
     if (directMessages) directMessages.innerHTML = `<span class="loader loader--small"></span>`;
     if (directError) directError.textContent = "";
@@ -1871,28 +2049,38 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
       && !activeMessages.some((item) => item.id === message.id)
     ) {
       activeMessages.push({ ...message, own: false });
+      if (activeMessagesHaveMore) activeMessageOffset += 1;
       renderDirectMessages(activeMessages);
-      void refreshConversation().then(() => refreshConversationList());
+      void refreshConversationList();
       return;
     }
     void refreshConversationList();
   };
 
   bindPlayerActions();
+  bindCommunityLoaders();
   socket?.on("message:received", receiveDirectMessage);
   search?.addEventListener("input", () => {
     if (searchTimer) window.clearTimeout(searchTimer);
     const query = search.value.trim();
     const sequence = ++searchSequence;
     if (query.length < 2) {
-      renderDiscovery(initialDiscovery, false);
+      activeSearchQuery = "";
+      discoverySearchOffset = 0;
+      discoverySearchHasMore = false;
+      renderDiscovery(discoveryPlayers, false);
       return;
     }
     if (discoveryList) discoveryList.innerHTML = `<div class="community-searching"><span class="loader loader--small"></span><p>Buscando jugadores…</p></div>`;
     searchTimer = window.setTimeout(async () => {
       try {
         const response = await api.searchUsers(query);
-        if (sequence === searchSequence) renderDiscovery(response.users, true);
+        if (sequence === searchSequence) {
+          activeSearchQuery = query;
+          discoverySearchOffset = response.nextOffset;
+          discoverySearchHasMore = response.hasMore;
+          renderDiscovery(response.users, true);
+        }
       } catch (error) {
         if (sequence === searchSequence && discoveryList) discoveryList.innerHTML = `<div class="community-empty"><b>No pudimos buscar</b><p>${escapeHtml(errorMessage(error))}</p></div>`;
       }
@@ -1902,6 +2090,8 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
   dialog?.addEventListener("cancel", () => {
     activeUsername = "";
     activeMessages = [];
+    activeMessageOffset = 0;
+    activeMessagesHaveMore = false;
   });
   directForm?.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -1914,6 +2104,7 @@ function bindCommunity(friends: User[], initialDiscovery: LeaderboardPlayer[]) {
     try {
       const response = await api.sendDirectMessage(activeUsername, message);
       activeMessages.push(response.message);
+      if (activeMessagesHaveMore) activeMessageOffset += 1;
       renderDirectMessages(activeMessages);
       input.value = "";
       void refreshConversationList();
@@ -2068,13 +2259,13 @@ function playerMatchHistoryMarkup(
     : `<div class="profile-match-history-empty"><span>♟</span><b>Aún no hay enfrentamientos registrados</b><p>Los resultados aparecerán aquí después de completar una partida clasificada.</p></div>`;
 
   return `<div class="profile-match-history-list">${history}</div>
-    ${hasMore ? `<div class="profile-match-history-actions"><button class="button button--quiet" type="button" data-view-more-history>Ver más</button><small>Se cargarán 10 enfrentamientos adicionales.</small></div>` : ""}`;
+    ${hasMore ? `<div class="profile-match-history-actions"><button class="button button--quiet" type="button" data-view-more-history>Ver más</button><small>Se cargarán ${LIST_PAGE_SIZE} enfrentamientos adicionales.</small></div>` : ""}`;
 }
 
 function playerMatchHistorySectionMarkup() {
   return `<section class="player-profile-history" aria-labelledby="player-profile-history-title">
     <header>
-      <div><span class="section-kicker">RESULTADOS RECIENTES</span><h2 id="player-profile-history-title">Historial de enfrentamientos</h2><p>Se carga solo cuando lo solicitas y muestra 10 partidas a la vez.</p></div>
+      <div><span class="section-kicker">RESULTADOS RECIENTES</span><h2 id="player-profile-history-title">Historial de enfrentamientos</h2><p>Se carga solo cuando lo solicitas y muestra ${LIST_PAGE_SIZE} partidas a la vez.</p></div>
       <button class="button button--quiet" type="button" data-view-player-history>Ver historial</button>
       <b data-player-history-count hidden></b>
     </header>
@@ -2143,7 +2334,7 @@ function profileSocialListMarkup(
     <span><span class="player-name-with-title"><b>${escapeHtml(user.name)}</b>${worldTrophyMarkup(user)}</span><small>${flag(user.countryCode)} @${escapeHtml(user.username)}</small>${worldTitleRecognitionMarkup(user, "world-title-recognition--compact")}</span>
     <i aria-hidden="true">→</i>
   </button>`).join("");
-  return `${profiles}${hasMore ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-view-more-social>Ver más</button><small>Se cargarán 20 perfiles adicionales.</small></div>` : ""}`;
+  return `${profiles}${hasMore ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-view-more-social>Ver más</button><small>Se cargarán ${LIST_PAGE_SIZE} perfiles adicionales.</small></div>` : ""}`;
 }
 
 async function renderPlayerProfile(username: string) {
@@ -2242,27 +2433,23 @@ async function renderPlayerProfile(username: string) {
         moreButton.textContent = "Cargando…";
       }
       try {
-        if (kind === "followers") {
-          const result = await api.followers(username, firstPage ? 0 : socialOffset);
-          if (version !== socialListVersion || !followingList.isConnected) return;
-          socialUsers.push(...result.users);
-          socialOffset = result.nextOffset;
-          followingList.innerHTML = profileSocialListMarkup(
-            socialUsers,
-            kind,
-            result.hasMore,
-          );
-          followingList
-            .querySelector<HTMLButtonElement>("[data-view-more-social]")
-            ?.addEventListener("click", () => {
-              void loadSocialList(kind, version, false);
-            });
-        } else {
-          const result = await api.following(username);
-          if (version !== socialListVersion || !followingList.isConnected) return;
-          socialUsers = result.users;
-          followingList.innerHTML = profileSocialListMarkup(socialUsers, kind);
-        }
+        const offset = firstPage ? 0 : socialOffset;
+        const result = kind === "followers"
+          ? await api.followers(username, offset)
+          : await api.following(username, offset);
+        if (version !== socialListVersion || !followingList.isConnected) return;
+        socialUsers.push(...result.users);
+        socialOffset = result.nextOffset;
+        followingList.innerHTML = profileSocialListMarkup(
+          socialUsers,
+          kind,
+          result.hasMore,
+        );
+        followingList
+          .querySelector<HTMLButtonElement>("[data-view-more-social]")
+          ?.addEventListener("click", () => {
+            void loadSocialList(kind, version, false);
+          });
       } catch (error) {
         if (version === socialListVersion && followingList.isConnected) {
           followingList.innerHTML = `<div class="profile-following-empty"><span>!</span><b>No pudimos cargar los perfiles</b><p>${escapeHtml(errorMessage(error))}</p></div>`;
@@ -2397,8 +2584,10 @@ function tournamentsMarkup(
   qualifier: QualifierTournamentResponse,
   world: WorldChampionshipResponse,
   payment: TournamentPayment,
-  participants: TournamentParticipant[],
+  participantPage: Awaited<ReturnType<typeof api.tournamentParticipants>>,
 ) {
+  const { participants } = participantPage;
+  const participantTotal = participantPage.total;
   const qualifierTournament = qualifier.tournament;
   const qualifierYear = qualifierTournament?.qualifierYear
     ?? Math.max(2027, new Date(qualifier.registrationStartsAt || Date.now()).getUTCFullYear());
@@ -2444,8 +2633,8 @@ function tournamentsMarkup(
         </div>
         <section class="tournament-registered-preview">
           <div><small>PERFILES DEL TORNEO</small><h3>Jugadores inscritos</h3></div>
-          <div class="tournament-avatar-stack">${participants.slice(0, 5).map((participant) => playerProfileButton(participant, avatarMarkup(participant, "avatar avatar--tournament-stack"), "tournament-stack-profile")).join("")}${participants.length > 5 ? `<span>+${participants.length - 5}</span>` : ""}</div>
-          <strong>${participants.length}<small>${participants.length === 1 ? "jugador" : "jugadores"}</small></strong>
+          <div class="tournament-avatar-stack">${participants.map((participant) => playerProfileButton(participant, avatarMarkup(participant, "avatar avatar--tournament-stack"), "tournament-stack-profile")).join("")}${participantTotal > participants.length ? `<span>+${participantTotal - participants.length}</span>` : ""}</div>
+          <strong>${participantTotal}<small>${participantTotal === 1 ? "jugador" : "jugadores"}</small></strong>
           <button type="button" data-open-tournament-participants ${qualifierTournament ? "" : "disabled"}>Ver perfiles →</button>
         </section>
         <button class="tournament-bracket-trigger" type="button" data-open-qualifier-bracket ${qualifierTournament ? "" : "disabled"}><span>${icon("tournament")}</span><p><small>CUADRO DE ENFRENTAMIENTOS</small><b>Ver rivales y fechas</b></p><strong>3 cupos <i>→</i></strong></button>
@@ -2482,10 +2671,10 @@ function tournamentsMarkup(
       <small class="tournament-entry-note">Al continuar aceptas las bases oficiales. La inscripción no mejora tu Elo ni concede ventajas competitivas.</small>
     </dialog>
     <dialog class="tournament-participants-dialog" aria-labelledby="tournament-participants-title">
-      <header><div><span class="section-kicker">PERFILES DE TORNEO</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participants.length} ${participants.length === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
+      <header><div><span class="section-kicker">PERFILES DE TORNEO</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participantTotal} ${participantTotal === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
       <label class="tournament-participant-search" data-participant-search-wrap><span>${icon("search")}</span><input type="search" autocomplete="off" placeholder="Buscar en los inscritos…" data-participant-search /></label>
       <p class="tournament-participants-error" data-participants-error aria-live="polite"></p>
-      <div class="tournament-participants-grid" data-participants-grid>${tournamentParticipantCards(participants)}</div>
+      <div class="tournament-participants-grid" data-participants-grid>${tournamentParticipantCards(participants)}${communityListMoreMarkup("tournament-participants", participantPage.hasMore)}</div>
     </dialog>
     <dialog class="qualifier-bracket-dialog" aria-labelledby="qualifier-bracket-title">
       <header><div><span class="section-kicker">CLASIFICATORIA ${qualifierYear}</span><h2 id="qualifier-bracket-title">Cuadro de enfrentamientos</h2><p>Del 26 de junio al 25 de septiembre · tres cupos por país</p></div><button type="button" data-close-qualifier-bracket aria-label="Cerrar">×</button></header>
@@ -2514,12 +2703,12 @@ async function renderTournaments() {
     } else {
       payment = { kind: "paypal", config: await api.donationConfig() };
     }
-    const participants = qualifier.tournament
-      ? (await api.tournamentParticipants(qualifier.tournament.id)).participants
-      : [];
-    root.innerHTML = appLayout(tournamentsMarkup(qualifier, world, payment, participants), "tournaments");
+    const participantPage = qualifier.tournament
+      ? await api.tournamentParticipants(qualifier.tournament.id)
+      : { participants: [], total: 0, nextOffset: 0, hasMore: false };
+    root.innerHTML = appLayout(tournamentsMarkup(qualifier, world, payment, participantPage), "tournaments");
     bindNavigation();
-    bindTournaments(qualifier, payment, participants);
+    bindTournaments(qualifier, payment, participantPage);
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "tournaments");
     bindNavigation();
@@ -2530,7 +2719,7 @@ async function renderTournaments() {
 function bindTournaments(
   qualifier: QualifierTournamentResponse,
   payment: TournamentPayment,
-  participants: TournamentParticipant[],
+  initialParticipantPage: Awaited<ReturnType<typeof api.tournamentParticipants>>,
 ) {
   const tournament = qualifier.tournament;
   const dialog = root.querySelector<HTMLDialogElement>(".tournament-entry-dialog");
@@ -2548,6 +2737,14 @@ function bindTournaments(
   const bracketDialog = root.querySelector<HTMLDialogElement>(".qualifier-bracket-dialog");
   const bracketContent = bracketDialog?.querySelector<HTMLElement>("[data-qualifier-bracket-content]");
   let bracketRefreshTimer: number | null = null;
+  let participants = [...initialParticipantPage.participants];
+  let participantTotal = initialParticipantPage.total;
+  let participantOffset = initialParticipantPage.nextOffset;
+  let participantsHaveMore = initialParticipantPage.hasMore;
+  let participantQuery = "";
+  let participantSearchTimer = 0;
+  let participantRequestSequence = 0;
+  let participantPageLoading = false;
 
   const closeDialog = () => dialog?.close();
   dialog?.querySelector("[data-close-tournament-entry]")?.addEventListener("click", closeDialog);
@@ -2640,19 +2837,70 @@ function bindTournaments(
       initializing = false;
     }
   });
-  const showParticipantList = (visible = participants) => {
+  const showParticipantList = () => {
     if (!participantsGrid) return;
-    participantsGrid.innerHTML = tournamentParticipantCards(visible);
+    participantsGrid.innerHTML = `${tournamentParticipantCards(participants)}${communityListMoreMarkup("tournament-participants", participantsHaveMore)}`;
     if (participantsTitle) participantsTitle.textContent = "Jugadores inscritos";
-    if (participantsSubtitle) participantsSubtitle.textContent = `${participants.length} ${participants.length === 1 ? "perfil confirmado" : "perfiles confirmados"}`;
+    if (participantsSubtitle) {
+      participantsSubtitle.textContent = participantQuery
+        ? `${participantTotal} ${participantTotal === 1 ? "resultado" : "resultados"}`
+        : `${participantTotal} ${participantTotal === 1 ? "perfil confirmado" : "perfiles confirmados"}`;
+    }
     if (participantSearchWrap) participantSearchWrap.hidden = false;
     if (participantsError) participantsError.textContent = "";
     participantsGrid.querySelectorAll<HTMLButtonElement>("[data-tournament-profile]").forEach((button) => {
       button.addEventListener("click", () => void showPlayerProfile(button.dataset.tournamentProfile || ""));
     });
+    participantsGrid.querySelector<HTMLButtonElement>("[data-load-more-tournament-participants]")
+      ?.addEventListener("click", () => void loadParticipantPage(false));
+  };
+  const loadParticipantPage = async (reset: boolean) => {
+    if (!tournament || (!reset && (participantPageLoading || !participantsHaveMore))) return;
+    participantPageLoading = true;
+    const sequence = reset ? ++participantRequestSequence : participantRequestSequence;
+    const requestedQuery = participantQuery;
+    const button = participantsGrid?.querySelector<HTMLButtonElement>("[data-load-more-tournament-participants]");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cargando…";
+    }
+    if (reset && participantsGrid) {
+      participantsGrid.innerHTML = `<div class="tournament-profile-loading"><span class="loader"></span><p>Buscando jugadores…</p></div>`;
+    }
+    try {
+      const page = await api.tournamentParticipants(
+        tournament.id,
+        reset ? 0 : participantOffset,
+        requestedQuery,
+      );
+      if (sequence !== participantRequestSequence || requestedQuery !== participantQuery) return;
+      if (reset) {
+        participants = page.participants;
+      } else {
+        const knownIds = new Set(participants.map((participant) => participant.id));
+        participants.push(...page.participants.filter((participant) => !knownIds.has(participant.id)));
+      }
+      participantTotal = page.total;
+      participantOffset = page.nextOffset;
+      participantsHaveMore = page.hasMore;
+      showParticipantList();
+    } catch (loadError) {
+      if (sequence !== participantRequestSequence || requestedQuery !== participantQuery) return;
+      if (reset && participantsGrid) {
+        participantsGrid.innerHTML = `<div class="tournament-participants-empty"><b>No pudimos cargar los jugadores</b><p>${escapeHtml(errorMessage(loadError))}</p></div>`;
+      } else if (button) {
+        button.disabled = false;
+        button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+      }
+      if (participantsError) participantsError.textContent = errorMessage(loadError);
+    } finally {
+      if (sequence === participantRequestSequence) participantPageLoading = false;
+    }
   };
   const showPlayerProfile = async (username: string, fromWorldPodium = false) => {
     if (!participantsGrid || !username) return;
+    participantRequestSequence += 1;
+    participantPageLoading = false;
     participantsGrid.innerHTML = `<div class="tournament-profile-loading"><span class="loader"></span><p>Cargando perfil…</p></div>`;
     if (participantsTitle) participantsTitle.textContent = "Perfil del jugador";
     if (participantsSubtitle) participantsSubtitle.textContent = `@${username}`;
@@ -2691,22 +2939,23 @@ function bindTournaments(
   };
   root.querySelector("[data-open-tournament-participants]")?.addEventListener("click", () => {
     if (!participantsDialog) return;
-    if (participantSearch) participantSearch.value = "";
-    showParticipantList();
     participantsDialog.showModal();
+    if (participantSearch && participantQuery) {
+      participantSearch.value = "";
+      participantQuery = "";
+      void loadParticipantPage(true);
+    } else {
+      showParticipantList();
+    }
   });
   participantsDialog?.querySelector("[data-close-tournament-participants]")?.addEventListener("click", () => participantsDialog.close());
   participantsDialog?.addEventListener("click", (event) => {
     if (event.target === participantsDialog) participantsDialog.close();
   });
   participantSearch?.addEventListener("input", () => {
-    const query = participantSearch.value.trim().toLocaleLowerCase(localeCode());
-    const visible = participants.filter((participant) =>
-      participant.name.toLocaleLowerCase(localeCode()).includes(query)
-      || participant.username.toLocaleLowerCase(localeCode()).includes(query),
-    );
-    showParticipantList(visible);
-    if (participantSearch) participantSearch.value = query;
+    if (participantSearchTimer) window.clearTimeout(participantSearchTimer);
+    participantQuery = participantSearch.value.trim();
+    participantSearchTimer = window.setTimeout(() => void loadParticipantPage(true), 320);
   });
   const stopBracketRefresh = () => {
     if (bracketRefreshTimer !== null) window.clearInterval(bracketRefreshTimer);
@@ -2758,6 +3007,7 @@ function bindTournaments(
   });
   pageCleanup = () => {
     stopBracketRefresh();
+    if (participantSearchTimer) window.clearTimeout(participantSearchTimer);
     paymentButtons?.close?.();
     if (dialog?.open) dialog.close();
     if (participantsDialog?.open) participantsDialog.close();
@@ -3241,6 +3491,10 @@ async function renderLeaderboard() {
 async function loadLeaderboard(scope: "DO" | "WORLD") {
   try {
     const response = await api.leaderboard(scope);
+    const players = [...response.players];
+    let nextOffset = response.nextOffset;
+    let hasMore = response.hasMore;
+    let loadingMore = false;
     root.innerHTML = appLayout(`
       <section class="page-heading"><div><span class="eyebrow"><i></i>Elo Damas oficial</span><h1>Clasificación</h1><p>Los jugadores que están marcando el ritmo en la modalidad 10×10.</p></div><span class="mode-pill mode-pill--large">10 × 10</span></section>
       ${eloTierScaleMarkup()}
@@ -3249,12 +3503,45 @@ async function loadLeaderboard(scope: "DO" | "WORLD") {
           <div class="scope-toggle"><button class="${scope === "DO" ? "is-active" : ""}" data-scope="DO">${flag("DO")} Nacional</button><button class="${scope === "WORLD" ? "is-active" : ""}" data-scope="WORLD">🌐 Mundial</button></div>
           <span>${response.totalPlayers} jugadores clasificados</span>
         </div>
-        ${leaderboardTable(response.players, false)}
+        <div data-leaderboard-results>${leaderboardTable(players, false)}</div>
+        <div data-leaderboard-more></div>
       </section>`, "ranking");
     bindNavigation();
     root.querySelectorAll<HTMLButtonElement>("[data-scope]").forEach((button) => {
       button.addEventListener("click", () => void loadLeaderboard(button.dataset.scope as "DO" | "WORLD"));
     });
+    const results = root.querySelector<HTMLElement>("[data-leaderboard-results]");
+    const more = root.querySelector<HTMLElement>("[data-leaderboard-more]");
+    const renderMore = () => {
+      if (!more) return;
+      more.innerHTML = hasMore
+        ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-load-more-leaderboard>Ver ${LIST_PAGE_SIZE} más</button><small>${players.length} de ${response.totalPlayers} jugadores mostrados.</small></div>`
+        : "";
+      more.querySelector<HTMLButtonElement>("[data-load-more-leaderboard]")
+        ?.addEventListener("click", async (event) => {
+          if (loadingMore) return;
+          loadingMore = true;
+          const button = event.currentTarget as HTMLButtonElement;
+          button.disabled = true;
+          button.textContent = "Cargando…";
+          try {
+            const page = await api.leaderboard(scope, nextOffset);
+            if (route() !== "/clasificacion") return;
+            players.push(...page.players);
+            nextOffset = page.nextOffset;
+            hasMore = page.hasMore;
+            if (results) results.innerHTML = leaderboardTable(players, false);
+            renderMore();
+          } catch (error) {
+            button.disabled = false;
+            button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+            toast(errorMessage(error), "error");
+          } finally {
+            loadingMore = false;
+          }
+        });
+    };
+    renderMore();
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "ranking");
     bindNavigation();
@@ -3805,25 +4092,62 @@ async function renderLiveGames() {
     root.innerHTML = appLayout(`
       <section class="page-heading live-games-heading"><div><span class="eyebrow"><i></i>OBSERVA · APRENDE · DISFRUTA</span><h1>Partidas en vivo</h1><p>Sigue las decisiones de otros jugadores sobre el tablero, jugada por jugada y sin intervenir.</p></div><span class="live-total"><i></i><b data-live-total>${response.total}</b><small>en directo</small></span></section>
       <section class="live-games-toolbar"><span>${icon("eye")} Solo se muestran partidas clasificadas públicas</span><button class="text-button" type="button" data-refresh-live>${icon("refresh")} Actualizar</button></section>
-      <section class="live-games-grid" data-live-games>${liveGamesListMarkup(response.games)}</section>
+      <section class="live-games-grid" data-live-games></section>
     `, "watch");
-    bindLiveGameCards();
+    let games = [...response.games];
+    let gamesOffset = response.nextOffset;
+    let gamesHaveMore = response.hasMore;
+    let gamesLoading = false;
 
-    const refresh = async () => {
+    const renderGames = () => {
+      const list = root.querySelector<HTMLElement>("[data-live-games]");
+      if (!list) return;
+      list.innerHTML = `${liveGamesListMarkup(games)}${communityListMoreMarkup("live-games", gamesHaveMore)}`;
+      bindLiveGameCards();
+      list.querySelector<HTMLButtonElement>("[data-load-more-live-games]")
+        ?.addEventListener("click", async (event) => {
+          if (gamesLoading) return;
+          gamesLoading = true;
+          const button = event.currentTarget as HTMLButtonElement;
+          button.disabled = true;
+          button.textContent = "Cargando…";
+          try {
+            const page = await api.spectatorGames(gamesOffset);
+            const knownIds = new Set(games.map((game) => game.id));
+            games.push(...page.games.filter((game) => !knownIds.has(game.id)));
+            gamesOffset = page.nextOffset;
+            gamesHaveMore = page.hasMore;
+            const total = root.querySelector<HTMLElement>("[data-live-total]");
+            if (total) total.textContent = String(page.total);
+            renderGames();
+          } catch (loadError) {
+            button.disabled = false;
+            button.textContent = `Ver ${LIST_PAGE_SIZE} más`;
+            toast(errorMessage(loadError), "error");
+          } finally {
+            gamesLoading = false;
+          }
+        });
+    };
+    renderGames();
+
+    const refresh = async (force = true) => {
+      if (!force && gamesOffset > LIST_PAGE_SIZE) return;
       try {
         const next = await api.spectatorGames();
         if (route() !== "/en-vivo") return;
-        const list = root.querySelector<HTMLElement>("[data-live-games]");
         const total = root.querySelector<HTMLElement>("[data-live-total]");
-        if (list) list.innerHTML = liveGamesListMarkup(next.games);
+        games = next.games;
+        gamesOffset = next.nextOffset;
+        gamesHaveMore = next.hasMore;
         if (total) total.textContent = String(next.total);
-        bindLiveGameCards();
+        renderGames();
       } catch {
         // La siguiente actualización vuelve a intentarlo sin vaciar la lista.
       }
     };
-    root.querySelector("[data-refresh-live]")?.addEventListener("click", () => void refresh());
-    const refreshTimer = window.setInterval(() => void refresh(), 10_000);
+    root.querySelector("[data-refresh-live]")?.addEventListener("click", () => void refresh(true));
+    const refreshTimer = window.setInterval(() => void refresh(false), 10_000);
     pageCleanup = () => window.clearInterval(refreshTimer);
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "watch");
@@ -4049,6 +4373,9 @@ function mountGame(initialGame: Game) {
   let rematchTimer = 0;
   let board: CmCheckersboard | null = null;
   let messages: ChatMessage[] = [];
+  let messagesBeforeId: string | null = null;
+  let messagesHaveMore = false;
+  let messageHistoryLoading = false;
   let completedAt = game.status === "active" ? 0 : Date.now();
   let sentRematchId: string | null = null;
   let incomingRematch: DirectInvitation | null = null;
@@ -4361,16 +4688,47 @@ function mountGame(initialGame: Game) {
   });
   root.querySelector("[data-chat-tab]")?.addEventListener("click", () => root.querySelector(".game-sidebar")?.classList.add("show-chat"));
 
-  const renderMessages = () => {
+  const renderMessages = (scrollToBottom = true) => {
     const container = root.querySelector<HTMLElement>(".chat-messages");
     if (!container) return;
     if (!messages.length) {
       container.innerHTML = `<div class="chat-placeholder">Aún no hay mensajes.<br>Saluda a tu rival.</div>`;
       return;
     }
-    container.innerHTML = messages.map((message) => `<div class="chat-message ${message.senderId === currentUser?.id || message.own ? "is-mine" : ""}"><small><button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(message.username)}">@${escapeHtml(message.username)}</button></small><p>${escapeHtml(message.message)}</p><time>${new Date(message.sentAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></div>`).join("");
-    container.scrollTop = container.scrollHeight;
+    container.innerHTML = `${communityListMoreMarkup("game-messages", messagesHaveMore)}${messages.map((message) => `<div class="chat-message ${message.senderId === currentUser?.id || message.own ? "is-mine" : ""}"><small><button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(message.username)}">@${escapeHtml(message.username)}</button></small><p>${escapeHtml(message.message)}</p><time>${new Date(message.sentAt).toLocaleTimeString(localeCode(), { hour: "2-digit", minute: "2-digit" })}</time></div>`).join("")}`;
+    container.querySelector<HTMLButtonElement>("[data-load-more-game-messages]")
+      ?.addEventListener("click", () => void loadEarlierGameMessages());
+    if (scrollToBottom) container.scrollTop = container.scrollHeight;
   };
+
+  async function loadEarlierGameMessages() {
+    const container = root.querySelector<HTMLElement>(".chat-messages");
+    if (!container || !messagesBeforeId || !messagesHaveMore || messageHistoryLoading) return;
+    messageHistoryLoading = true;
+    const button = container.querySelector<HTMLButtonElement>("[data-load-more-game-messages]");
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cargando…";
+    }
+    const previousHeight = container.scrollHeight;
+    try {
+      const response = await api.messages(game.id, messagesBeforeId);
+      const knownIds = new Set(messages.map((message) => message.id));
+      messages = [...response.messages.filter((message) => !knownIds.has(message.id)), ...messages];
+      messagesBeforeId = response.nextBeforeId;
+      messagesHaveMore = response.hasMore;
+      renderMessages(false);
+      container.scrollTop = container.scrollHeight - previousHeight;
+    } catch (historyError) {
+      if (button) {
+        button.disabled = false;
+        button.textContent = `Ver ${LIST_PAGE_SIZE} anteriores`;
+      }
+      toast(errorMessage(historyError), "error");
+    } finally {
+      messageHistoryLoading = false;
+    }
+  }
 
   const showChatCloud = (message: ChatMessage) => {
     if (game.status !== "active") return;
@@ -4445,7 +4803,13 @@ function mountGame(initialGame: Game) {
     });
   });
 
-  void api.messages(game.id).then((response) => { messages = response.messages; renderMessages(); }).catch(() => {});
+  void api.messages(game.id).then((response) => {
+    const loadedIds = new Set(response.messages.map((message) => message.id));
+    messages = [...response.messages, ...messages.filter((message) => !loadedIds.has(message.id))];
+    messagesBeforeId = response.nextBeforeId;
+    messagesHaveMore = response.hasMore;
+    renderMessages();
+  }).catch(() => {});
   const socketGameUpdate = (next: Game) => { if (String(next.id) === game.id) update({ ...next, playerColor: ownSide }); };
   const socketMessage = (message: ChatMessage) => addLiveMessage(message);
   const socketSpectatorUpdate = (payload: { gameId: string; count: number }) => {
@@ -4675,6 +5039,18 @@ async function connectRealtime() {
   });
 }
 
+function scheduleBackgroundServices(user: User, delay = 0) {
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      if (currentUser?.id !== user.id) return;
+      void connectRealtime().catch((error) => {
+        console.warn("La conexión en vivo se completará en segundo plano.", error);
+      });
+      void initializeNativeStoreForUser(user);
+    }, delay);
+  });
+}
+
 function setSessionHint(active: boolean) {
   try {
     if (active) localStorage.setItem(SESSION_HINT_KEY, "1");
@@ -4811,11 +5187,7 @@ export async function startApp(user: User | null) {
           console.warn("No se pudo comprobar la partida activa.", error);
           return null;
         });
-    const [, activeGame] = await Promise.all([
-      connectRealtime(),
-      activeGameRequest,
-      initializeNativeStoreForUser(currentUser),
-    ]);
+    const activeGame = await activeGameRequest;
     if (activeGame?.status === "active") {
       const activePath = `/partida/${activeGame.id}`;
       history.replaceState(
@@ -4826,5 +5198,8 @@ export async function startApp(user: User | null) {
     }
   }
   await renderRoute();
-  if (currentUser) void checkIncomingChallenges();
+  if (currentUser) {
+    scheduleBackgroundServices(currentUser);
+    void checkIncomingChallenges();
+  }
 }

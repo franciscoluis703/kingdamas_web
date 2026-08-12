@@ -73,6 +73,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 const json = (value: unknown) => JSON.stringify(value);
+export const LIST_PAGE_SIZE = 5;
 
 const responseCache = new Map<string, {
   expiresAt: number;
@@ -172,8 +173,10 @@ export const api = {
       `/donations/${encodeURIComponent(orderId)}/capture`,
       { method: "POST" },
     ),
-  searchUsers: (query: string) =>
-    request<{ users: User[] }>(`/users/search?q=${encodeURIComponent(query)}`),
+  searchUsers: (query: string, offset = 0) =>
+    request<{ users: User[]; nextOffset: number; hasMore: boolean }>(
+      `/users/search?q=${encodeURIComponent(query)}&offset=${offset}`,
+    ),
   communityStats: () =>
     cachedRequest("community-stats", 60_000, () =>
       request<{ registeredUsers: number }>("/community/stats")),
@@ -184,10 +187,15 @@ export const api = {
       method: "POST",
       body: json({ boardSize: 10, difficultyKey }),
     }),
-  following: (username: string) =>
-    cachedRequest(`following:${username.toLowerCase()}`, 20_000, () =>
-      request<{ users: User[] }>(
-        `/users/${encodeURIComponent(username)}/following`,
+  following: (username: string, offset = 0) =>
+    cachedRequest(`following:${username.toLowerCase()}:${offset}`, 20_000, () =>
+      request<{
+        users: User[];
+        total: number;
+        nextOffset: number;
+        hasMore: boolean;
+      }>(
+        `/users/${encodeURIComponent(username)}/following?offset=${offset}`,
       )),
   followers: (username: string, offset = 0) =>
     cachedRequest(`followers:${username.toLowerCase()}:${offset}`, 20_000, () =>
@@ -208,11 +216,22 @@ export const api = {
     invalidateCachedRequests("following:");
     invalidateCachedRequests("followers:");
   },
-  conversations: () =>
-    request<{ conversations: DirectConversation[] }>("/messages"),
-  directMessages: (username: string) =>
-    request<{ user: User; messages: DirectMessage[] }>(
-      `/messages/${encodeURIComponent(username)}`,
+  conversations: (offset = 0) =>
+    request<{
+      conversations: DirectConversation[];
+      total: number;
+      unreadCount: number;
+      nextOffset: number;
+      hasMore: boolean;
+    }>(`/messages?offset=${offset}`),
+  directMessages: (username: string, offset = 0) =>
+    request<{
+      user: User;
+      messages: DirectMessage[];
+      nextOffset: number;
+      hasMore: boolean;
+    }>(
+      `/messages/${encodeURIComponent(username)}?offset=${offset}`,
     ),
   sendDirectMessage: (username: string, message: string) =>
     request<{ message: DirectMessage }>(
@@ -233,9 +252,14 @@ export const api = {
       `/tournaments/${encodeURIComponent(tournamentId)}/entry/${encodeURIComponent(orderId)}/capture`,
       { method: "POST" },
     ),
-  tournamentParticipants: (tournamentId: string) =>
-    request<{ participants: TournamentParticipant[] }>(
-      `/tournaments/${encodeURIComponent(tournamentId)}/participants`,
+  tournamentParticipants: (tournamentId: string, offset = 0, query = "") =>
+    request<{
+      participants: TournamentParticipant[];
+      total: number;
+      nextOffset: number;
+      hasMore: boolean;
+    }>(
+      `/tournaments/${encodeURIComponent(tournamentId)}/participants?offset=${offset}${query ? `&q=${encodeURIComponent(query)}` : ""}`,
     ),
   qualifierBracket: (tournamentId: string, countryCode?: string) =>
     request<QualifierBracketResponse>(
@@ -253,13 +277,15 @@ export const api = {
     request<{ system: string; initialRating: number; ratings: Rating[] }>(
       "/ratings/me",
     ),
-  leaderboard: (scope: "DO" | "WORLD") =>
-    cachedRequest(`leaderboard:${scope}`, 15_000, () =>
+  leaderboard: (scope: "DO" | "WORLD", offset = 0) =>
+    cachedRequest(`leaderboard:${scope}:${offset}`, 15_000, () =>
       request<{
         system: string;
         totalPlayers: number;
         players: LeaderboardPlayer[];
-      }>(`/ratings/leaderboard?boardSize=10&country=${scope}&limit=100`)),
+        nextOffset: number;
+        hasMore: boolean;
+      }>(`/ratings/leaderboard?boardSize=10&country=${scope}&limit=${LIST_PAGE_SIZE}&offset=${offset}`)),
   joinMatchmaking: (timeControlMinutes: number) =>
     request<MatchmakingResult>("/matchmaking/join", {
       method: "POST",
@@ -274,8 +300,13 @@ export const api = {
   activeGame: () =>
     request<{ game: Game | null }>("/online-games/active"),
   game: (id: string) => request<{ game: Game }>(`/online-games/${id}`),
-  spectatorGames: () =>
-    request<{ games: SpectatorGameSummary[]; total: number }>("/spectator-games"),
+  spectatorGames: (offset = 0) =>
+    request<{
+      games: SpectatorGameSummary[];
+      total: number;
+      nextOffset: number;
+      hasMore: boolean;
+    }>(`/spectator-games?offset=${offset}`),
   spectatorGame: (id: string) =>
     request<{ game: SpectatorGame; spectatorCount: number }>(
       `/spectator-games/${encodeURIComponent(id)}`,
@@ -299,8 +330,12 @@ export const api = {
       method: "POST",
       body: json({ accept }),
     }),
-  messages: (id: string) =>
-    request<{ messages: ChatMessage[] }>(`/online-games/${id}/messages`),
+  messages: (id: string, beforeId?: string) =>
+    request<{
+      messages: ChatMessage[];
+      nextBeforeId: string | null;
+      hasMore: boolean;
+    }>(`/online-games/${id}/messages${beforeId ? `?before=${encodeURIComponent(beforeId)}` : ""}`),
   sendMessage: (id: string, message: string, kind: "text" | "emoji" = "text") =>
     request<{ message: ChatMessage }>(`/online-games/${id}/messages`, {
       method: "POST",
