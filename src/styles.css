@@ -869,15 +869,6 @@ html[data-premium="true"] [data-ad-slot] { display: none !important; }
 .world-prizes .is-bronze i { color: #25160e; background: #b67d5b; }
 .world-prizes > p { margin: 12px 0 0; color: #91a299; font-size: 12px; line-height: 1.45; text-align: center; }
 .world-prizes > p b { color: var(--gold); }
-.world-champion-support { margin: 0 0 18px; padding: 15px; display: grid; grid-template-columns: 38px minmax(0,1fr); align-items: center; gap: 8px 11px; border: 1px solid rgba(232,184,90,.23); border-radius: 12px; background: linear-gradient(135deg, rgba(232,184,90,.1), rgba(232,184,90,.025)); }
-.world-champion-support > span { width: 38px; height: 38px; display: grid; place-items: center; color: #2d2009; border-radius: 11px; background: var(--gold); font-size: 21px; }
-.world-champion-support > div { min-width: 0; display: grid; gap: 2px; }
-.world-champion-support > div small { color: #a99770; font-size: 8px; font-weight: 800; letter-spacing: .1em; }
-.world-champion-support > div b { color: var(--cream); font-size: 15px; }
-.world-champion-support > div p { margin: 0; color: #879990; font-size: 10px; line-height: 1.4; }
-.world-champion-support > .button { width: 100%; grid-column: 1 / -1; margin-top: 4px; }
-.world-champion-support > .button:disabled { cursor: not-allowed; opacity: .62; }
-.world-champion-support-error { min-height: 0; grid-column: 1 / -1; margin: 0; color: #e79c8e; font-size: 10px; line-height: 1.4; }
 .tournament-entry-dialog { width: min(500px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 34px; color: #17221d; border: 0; border-radius: 22px; background: #f7f3e9; box-shadow: 0 35px 100px rgba(0,0,0,.62); text-align: center; overflow-y: auto; }
 .tournament-entry-dialog .dialog-close { color: #6b756f; }
 .tournament-entry-seal { width: 64px; height: 64px; margin: 0 auto 14px; display: grid; place-items: center; color: #1d270e; border-radius: 18px; background: linear-gradient(145deg,#f0cc79,#dba43e); box-shadow: 0 13px 30px rgba(174,124,31,.2); }

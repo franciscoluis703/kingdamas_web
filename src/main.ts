@@ -2896,7 +2896,6 @@ type TournamentPayment =
       kind: "native-store";
       config: AppStoreConfig;
       product: NativeStoreProduct | null;
-      championProduct: NativeStoreProduct | null;
     };
 
 function tournamentsMarkup(
@@ -2967,7 +2966,6 @@ function tournamentsMarkup(
         <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inicio</small><b>${tournamentDate(worldStarts)}</b></span><span><small>Final</small><b>${tournamentDate(worldEnds)}</b></span></div>
         ${worldTitleHoldersMarkup(world)}
         <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString(localeCode())}</b></p>` : ""}</div>
-        ${payment.kind === "native-store" ? `<section class="world-champion-support"><span>♛</span><div><small>APOYO VOLUNTARIO</small><b>Apoya al campeón</b><p>Tu aporte ayuda a sostener el Campeonato Mundial y no concede ventajas competitivas.</p></div><button class="button button--app-store" type="button" ${payment.config.enabled && payment.config.appAccountToken && payment.championProduct ? `data-support-world-champion` : "disabled"}>${isAndroidNativeApp() ? "▶" : ""} Apoyar al campeón${payment.championProduct ? ` · ${escapeHtml(payment.championProduct.displayPrice)}` : ` · Pendiente en ${nativeStoreName()}`}</button><p class="world-champion-support-error" data-world-champion-support-error aria-live="polite"></p></section>` : ""}
         <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Clasificados por país y los tres campeones vigentes.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>El podio cambia de dueño</b><small>Los tres mejores reciben los trofeos hasta la siguiente edición.</small></p></li></ul>
         ${viewerHasWorldPlace ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>${world.viewer?.directlyQualified ? "Tu pase directo al Mundial está confirmado" : "Estás en el Campeonato Mundial"}</b><small>${world.viewer?.directlyQualified ? "Eres parte del podio vigente y no necesitas jugar la clasificatoria." : "Tu clasificación fue registrada automáticamente."}</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático al clasificar por tu país. Los tres campeones vigentes conservan pase directo.</div>`}
       </article>
@@ -3016,25 +3014,16 @@ async function renderTournaments() {
     if (isNativeAdsAvailable()) {
       const config = await nativeStoreConfig();
       const tournamentProduct = config.products.tournamentEntry;
-      const championSupport = config.products.support.find((item) => item.tier === "champion");
       let product: NativeStoreProduct | null = null;
-      let championProduct: NativeStoreProduct | null = null;
       if (config.enabled && config.appAccountToken && isNativeStoreAvailable()) {
         try {
-          const requestedProductIds = [
-            tournamentProduct.productId,
-            ...(championSupport ? [championSupport.productId] : []),
-          ];
-          const storeProducts = await nativeStoreProducts(requestedProductIds);
+          const storeProducts = await nativeStoreProducts([tournamentProduct.productId]);
           product = storeProducts.find((item) => item.id === tournamentProduct.productId) || null;
-          championProduct = championSupport
-            ? storeProducts.find((item) => item.id === championSupport.productId) || null
-            : null;
         } catch (storeError) {
           console.warn(`${nativeStoreName()} todavía no devolvió los productos del torneo.`, storeError);
         }
       }
-      payment = { kind: "native-store", config, product, championProduct };
+      payment = { kind: "native-store", config, product };
     } else {
       payment = { kind: "paypal", config: await api.donationConfig() };
     }
@@ -3131,45 +3120,6 @@ function bindTournaments(
       error.textContent = errorMessage(purchaseError);
       button.disabled = false;
       button.textContent = originalLabel;
-    }
-  });
-  root.querySelector<HTMLButtonElement>("[data-support-world-champion]")?.addEventListener("click", async (event) => {
-    if (
-      payment.kind !== "native-store" ||
-      !payment.config.appAccountToken ||
-      !payment.championProduct
-    ) return;
-    const button = event.currentTarget as HTMLButtonElement;
-    const feedback = root.querySelector<HTMLElement>("[data-world-champion-support-error]");
-    const originalLabel = button.textContent || "Apoyar al campeón";
-    button.disabled = true;
-    button.textContent = `Confirmando con ${nativeStoreName()}…`;
-    if (feedback) feedback.textContent = "";
-    try {
-      const result = await purchaseNativeStoreProduct(
-        payment.championProduct.id,
-        payment.config.appAccountToken,
-      );
-      if (result.state === "cancelled") {
-        button.disabled = false;
-        button.textContent = originalLabel;
-        return;
-      }
-      if (result.state === "pending") {
-        button.textContent = "Pendiente de aprobación";
-        if (feedback) {
-          feedback.textContent = `El apoyo espera aprobación de ${nativeStoreName()} y se confirmará automáticamente.`;
-        }
-        return;
-      }
-      if (!result.transaction) return;
-      await confirmAndFinishNativeTransaction(result.transaction);
-      button.textContent = "✓ Apoyo confirmado";
-      toast("Gracias por apoyar al campeón y al Campeonato Mundial.", "success");
-    } catch (supportError) {
-      button.disabled = false;
-      button.textContent = originalLabel;
-      if (feedback) feedback.textContent = errorMessage(supportError);
     }
   });
   root.querySelector("[data-open-tournament-entry]")?.addEventListener("click", async () => {
