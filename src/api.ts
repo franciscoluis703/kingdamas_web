@@ -60,6 +60,15 @@ export interface AppStoreConfig {
   };
 }
 
+export interface DonationConfig {
+  enabled: boolean;
+  clientId: string | null;
+  currency: "USD";
+  minAmount: number;
+  maxAmount: number;
+  products: AppStoreConfig["products"];
+}
+
 export interface AppStoreConfirmation {
   status: "COMPLETED";
   purpose: "tournament_entry" | "support";
@@ -69,7 +78,7 @@ export interface AppStoreConfirmation {
 
 export interface PremiumEntitlement {
   active: boolean;
-  source: "app_store" | "google_play" | null;
+  source: "app_store" | "google_play" | "paypal" | null;
   expiresAt: string | null;
 }
 
@@ -172,14 +181,7 @@ export const api = {
       method: "PATCH",
       body: json({ language }),
     }),
-  donationConfig: () =>
-    request<{
-      enabled: boolean;
-      clientId: string | null;
-      currency: "USD";
-      minAmount: number;
-      maxAmount: number;
-    }>("/donations/config"),
+  donationConfig: () => request<DonationConfig>("/donations/config"),
   appStoreConfig: () => request<AppStoreConfig>("/app-store/config"),
   confirmAppStoreTransaction: (signedTransactionInfo: string) =>
     request<AppStoreConfirmation>("/app-store/transactions/confirm", {
@@ -214,6 +216,21 @@ export const api = {
   captureDonationOrder: (orderId: string) =>
     request<{ status: string }>(
       `/donations/${encodeURIComponent(orderId)}/capture`,
+      { method: "POST" },
+    ),
+  createWebProductOrder: (productId: string) =>
+    request<{ id: string }>(
+      `/donations/products/${encodeURIComponent(productId)}/create-order`,
+      { method: "POST" },
+    ),
+  captureWebProductOrder: (productId: string, orderId: string) =>
+    request<{
+      status: string;
+      purpose: "support" | "premium";
+      productId: string;
+      premium?: PremiumEntitlement;
+    }>(
+      `/donations/products/${encodeURIComponent(productId)}/${encodeURIComponent(orderId)}/capture`,
       { method: "POST" },
     ),
   searchUsers: (query: string, offset = 0) =>

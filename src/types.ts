@@ -24,7 +24,7 @@ export interface User {
   worldTitle?: WorldTitle | null;
   premium?: {
     active: boolean;
-    source: "app_store" | "google_play" | null;
+    source: "app_store" | "google_play" | "paypal" | null;
     expiresAt: string | null;
   };
 }

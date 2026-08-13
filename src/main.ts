@@ -559,10 +559,10 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
         <button class="nav-item sidebar-information-link ${active === "legal" ? "is-active" : ""}" type="button" data-route="/informacion"><i>i</i><span>Información</span></button>
         <button class="sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="${isNativeAdsAvailable() ? "/apoyar" : "/donar"}">
           <span class="sidebar-donate-icon">${icon("heart")}</span>
-          <span><small>APOYA EL PROYECTO</small><b>${isNativeAdsAvailable() ? "Apoyar" : "Donar"}</b></span>
+          <span><small>APOYA EL PROYECTO</small><b>Apoyo</b></span>
           <i aria-hidden="true">→</i>
         </button>
-        ${isNativeAdsAvailable() ? `<button class="nav-item sidebar-ad-free ${active === "premium" ? "is-active" : ""}" type="button" data-route="/quitar-anuncios"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>` : ""}
+        <button class="nav-item sidebar-ad-free ${active === "premium" ? "is-active" : ""}" type="button" data-route="/quitar-anuncios"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>
         <button class="sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos"><span class="sidebar-credits-icon">©</span><span><b>Créditos</b><small>Autores y licencias</small></span><i aria-hidden="true">→</i></button>
         <button class="nav-item nav-item--logout" data-logout>${icon("logout")}<span>Cerrar sesión</span></button>
       </aside>
@@ -1335,7 +1335,12 @@ async function loadPayPalSdk(clientId: string, currency: string) {
 }
 
 function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) {
-  const presetAmounts = [3, 5, 10, 25];
+  const supportLabels: Record<AppStoreConfig["products"]["support"][number]["tier"], string> = {
+    small: "Apoyo pequeño",
+    medium: "Apoyo mediano",
+    large: "Apoyo grande",
+    champion: "Apoyo campeón",
+  };
   return `
     <section class="page-heading donation-heading">
       <div><span class="eyebrow"><i></i>APOYA KING DAMAS</span><h1>Ayuda a mantener<br>las mesas abiertas</h1><p>Tu aporte sostiene los servidores y el desarrollo continuo de la plataforma.</p></div>
@@ -1343,12 +1348,11 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
     </section>
     <div class="donation-layout">
       <section class="panel donation-card">
-        <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige cuánto donar</h2></div><span class="donation-currency">USD</span></div>
+        <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige una opción de apoyo</h2></div><span class="donation-currency">USD</span></div>
         ${config.enabled ? `
-          <div class="donation-amounts" role="radiogroup" aria-label="Monto de la donación">
-            ${presetAmounts.map((amount) => `<button type="button" class="donation-amount ${amount === 5 ? "is-selected" : ""}" role="radio" aria-checked="${amount === 5}" data-donation-amount="${amount}"><small>USD</small><b>$${amount}</b></button>`).join("")}
+          <div class="donation-amounts web-product-options" role="radiogroup" aria-label="Opciones de apoyo">
+            ${config.products.support.map((product, index) => `<button type="button" class="donation-amount web-product-option web-product-option--${product.tier} ${index === 0 ? "is-selected" : ""}" role="radio" aria-checked="${index === 0}" data-web-product="${escapeHtml(product.productId)}"><small>${escapeHtml(product.referenceName || supportLabels[product.tier])}</small><b>$${Number(product.price).toFixed(2)}</b></button>`).join("")}
           </div>
-          <label class="custom-donation"><span>Otro monto</span><span><i>$</i><input type="number" min="${config.minAmount}" max="${config.maxAmount}" step="0.01" inputmode="decimal" placeholder="1.00 – 500.00" data-custom-donation /></span></label>
           <p class="donation-error" data-donation-error aria-live="polite"></p>
           <div class="paypal-button-container" data-paypal-button><span class="loader loader--small"></span><small>Preparando pago seguro…</small></div>
           <div class="payment-security"><span>🔒</span><p><b>Pago procesado por PayPal</b><small>King Damas no recibe ni almacena tus datos bancarios.</small></p></div>
@@ -1366,6 +1370,39 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
           <li><span>03</span><p><b>Comunidad competitiva</b><small>Un espacio gratuito para jugadores de damas.</small></p></li>
         </ul>
         <p class="donation-fair-play">La donación es opcional y no modifica tu Elo Damas ni ofrece ventajas en las partidas.</p>
+      </aside>
+    </div>`;
+}
+
+function webAdFreeMarkup(
+  config: Awaited<ReturnType<typeof api.donationConfig>>,
+  subscriptionActive: boolean,
+) {
+  const planLabels: Record<AppStoreConfig["products"]["adFree"][number]["interval"], string> = {
+    weekly: "Semana",
+    monthly: "Mes",
+    annual: "Anual",
+  };
+  return `
+    <section class="page-heading donation-heading">
+      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Juega sin anuncios<br>en todas tus plataformas</h1><p>El plan se acredita a tu cuenta King Damas y se reconoce en web, iOS y Android.</p></div>
+      <span class="donation-heart ios-premium-heading-icon">♢</span>
+    </section>
+    <div class="donation-layout">
+      <section class="panel donation-card">
+        <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
+          <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Elige cuánto tiempo jugar sin anuncios"}</h2><p>${subscriptionActive ? "Tu cuenta ya es Premium; puedes añadir más tiempo al periodo vigente." : "El pago se procesa con PayPal y activa Premium durante el periodo elegido."}</p></div>
+          <div class="ios-ad-free-plans web-premium-plans">${config.products.adFree.map((product, index) => `<button class="button button--outline ios-ad-free-plan ios-ad-free-plan--${product.interval} ${index === 0 ? "is-selected" : ""}" type="button" aria-pressed="${index === 0}" data-web-product="${escapeHtml(product.productId)}"><small>${planLabels[product.interval]}</small><b>$${Number(product.price).toFixed(2)}</b></button>`).join("")}</div><div class="paypal-button-container web-premium-paypal" data-paypal-button><span class="loader loader--small"></span><small>Preparando pago seguro…</small></div>
+          <p class="donation-error" data-donation-error aria-live="polite"></p>
+          <small class="ios-subscription-terms">La compra web concede una semana, un mes o un año de Premium según el plan. Se acumula después de cualquier periodo Premium vigente. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
+          <div class="payment-security"><span>🔒</span><p><b>Pago procesado por PayPal</b><small>King Damas no recibe ni almacena tus datos bancarios.</small></p></div>
+        </section>
+      </section>
+      <aside class="panel donation-purpose ios-premium-purpose">
+        <img src="/brand/icon-192.png?v=piece-1" alt="" />
+        <span class="section-kicker">UNA SOLA CUENTA</span><h2>Premium donde juegues</h2>
+        <ul><li><span>01</span><p><b>Sin anuncios</b><small>No verás banners ni anuncios al finalizar partidas.</small></p></li><li><span>02</span><p><b>iOS, Android y web</b><small>Inicia sesión con la misma cuenta King Damas.</small></p></li><li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo ni torneos.</small></p></li></ul>
       </aside>
     </div>`;
 }
@@ -1612,10 +1649,29 @@ async function renderDonation() {
 }
 
 async function renderAdFree() {
-  if (!isNativeAdsAvailable()) return navigate("/donar");
   root.innerHTML = appLayout(loadingMarkup("Consultando tus opciones Premium…"), "premium");
   bindNavigation();
   try {
+    if (!isNativeAdsAvailable()) {
+      const [config, premiumResponse] = await Promise.all([
+        api.donationConfig(),
+        api.premiumStatus(),
+      ]);
+      applyPremiumStatus(
+        premiumResponse.premium.active,
+        premiumResponse.premium.expiresAt,
+        premiumResponse.premium.source,
+      );
+      root.innerHTML = appLayout(
+        webAdFreeMarkup(config, premiumResponse.premium.active),
+        "premium",
+      );
+      bindNavigation();
+      if (config.enabled && config.clientId) {
+        await bindWebProductPayment(config, "/quitar-anuncios");
+      }
+      return;
+    }
     const config = await nativeStoreConfig();
     let products: NativeStoreProduct[] = [];
     if (config.enabled) {
@@ -1645,62 +1701,76 @@ async function renderAdFree() {
 }
 
 async function bindDonation(config: Awaited<ReturnType<typeof api.donationConfig>>) {
-  const container = root.querySelector<HTMLElement>("[data-paypal-button]");
-  const custom = root.querySelector<HTMLInputElement>("[data-custom-donation]");
-  const error = root.querySelector<HTMLElement>("[data-donation-error]");
-  if (!container || !custom || !error || !config.clientId) return;
+  return bindWebProductPayment(config, "/donar");
+}
 
-  let amount = 5;
+async function bindWebProductPayment(
+  config: Awaited<ReturnType<typeof api.donationConfig>>,
+  expectedRoute: "/donar" | "/quitar-anuncios",
+) {
+  const container = root.querySelector<HTMLElement>("[data-paypal-button]");
+  const error = root.querySelector<HTMLElement>("[data-donation-error]");
+  const productButtons = [
+    ...root.querySelectorAll<HTMLButtonElement>("[data-web-product]"),
+  ];
+  if (!container || !error || !config.clientId || !productButtons.length) return;
+
+  let productId = productButtons.find((button) => (
+    button.classList.contains("is-selected")
+  ))?.dataset.webProduct || productButtons[0]?.dataset.webProduct || "";
+  const productByOrder = new Map<string, string>();
   const setError = (message = "") => { error.textContent = message; };
-  root.querySelectorAll<HTMLButtonElement>("[data-donation-amount]").forEach((button) => {
+  productButtons.forEach((button) => {
     button.addEventListener("click", () => {
-      amount = Number(button.dataset.donationAmount);
-      custom.value = "";
+      productId = button.dataset.webProduct || "";
       setError();
-      root.querySelectorAll<HTMLButtonElement>("[data-donation-amount]").forEach((item) => {
+      productButtons.forEach((item) => {
         const selected = item === button;
         item.classList.toggle("is-selected", selected);
         item.setAttribute("aria-checked", String(selected));
+        item.setAttribute("aria-pressed", String(selected));
       });
-    });
-  });
-  custom.addEventListener("input", () => {
-    amount = Number(custom.value);
-    setError();
-    root.querySelectorAll<HTMLButtonElement>("[data-donation-amount]").forEach((item) => {
-      item.classList.remove("is-selected");
-      item.setAttribute("aria-checked", "false");
     });
   });
 
   try {
     const paypal = await loadPayPalSdk(config.clientId, config.currency);
-    if (route() !== "/donar" || !container.isConnected) return;
+    if (route() !== expectedRoute || !container.isConnected) return;
     container.innerHTML = "";
     const buttons = paypal.Buttons({
       style: { layout: "vertical", color: "gold", shape: "rect", label: "paypal", height: 45 },
       createOrder: async () => {
-        if (!Number.isFinite(amount) || amount < config.minAmount || amount > config.maxAmount) {
-          const message = `Elige un monto entre $${config.minAmount} y $${config.maxAmount}.`;
-          setError(message);
-          throw new Error(message);
-        }
+        if (!productId) throw new Error("Elige un producto para continuar.");
         setError();
-        return (await api.createDonationOrder(amount)).id;
+        const selectedProductId = productId;
+        const order = await api.createWebProductOrder(selectedProductId);
+        productByOrder.set(order.id, selectedProductId);
+        return order.id;
       },
       onApprove: async ({ orderID }) => {
-        const result = await api.captureDonationOrder(orderID);
+        const purchasedProductId = productByOrder.get(orderID) || productId;
+        const result = await api.captureWebProductOrder(purchasedProductId, orderID);
+        productByOrder.delete(orderID);
         if (result.status !== "COMPLETED") {
-          throw new Error("PayPal no pudo confirmar la donación.");
+          throw new Error("PayPal no pudo confirmar la compra.");
+        }
+        if (result.premium) {
+          applyPremiumStatus(
+            result.premium.active,
+            result.premium.expiresAt,
+            result.premium.source,
+          );
         }
         const card = root.querySelector<HTMLElement>(".donation-card");
         if (card) {
-          card.innerHTML = `<div class="donation-success"><span>✓</span><small class="section-kicker">DONACIÓN COMPLETADA</small><h2>Gracias por apoyar King Damas</h2><p>Tu aporte nos ayuda a mantener la comunidad jugando y creciendo.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`;
+          card.innerHTML = result.purpose === "premium"
+            ? `<div class="donation-success"><span>✓</span><small class="section-kicker">PREMIUM ACTIVADO</small><h2>Ya disfrutas King Damas sin anuncios</h2><p>El plan quedó asociado a tu cuenta en web, iOS y Android.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`
+            : `<div class="donation-success"><span>✓</span><small class="section-kicker">APORTE COMPLETADO</small><h2>Gracias por apoyar King Damas</h2><p>Tu aporte nos ayuda a mantener la comunidad jugando y creciendo.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`;
           bindNavigation();
         }
-        toast("¡Gracias por apoyar King Damas!");
+        toast(result.purpose === "premium" ? "¡Premium activado!" : "¡Gracias por apoyar King Damas!");
       },
-      onCancel: () => toast("La donación fue cancelada; no se realizó ningún cargo.", "error"),
+      onCancel: () => toast("La compra fue cancelada; no se realizó ningún cargo.", "error"),
       onError: (paymentError) => {
         setError(errorMessage(paymentError));
       },
@@ -1846,7 +1916,7 @@ function legalContactMarkup() {
 function legalCookiesMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. Las aplicaciones iOS y Android pueden utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones del sitio web y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
+    <section><h2>Servicios externos</h2><p>PayPal interviene cuando visitas las secciones de apoyo, Premium o inscripción del sitio web y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -1856,7 +1926,7 @@ function legalTermsMarkup() {
     <section><h2>1. Aceptación y cuenta</h2><p>Al crear o utilizar una cuenta confirmas que puedes aceptar estas condiciones. Si eres menor de edad, debes contar con autorización y supervisión de tu padre, madre o tutor legal. Debes proporcionar información válida, proteger tus credenciales y responder por la actividad de tu cuenta.</p></section>
     <section><h2>2. Uso permitido</h2><p>King Damas está destinado al juego de damas internacionales 10×10, la interacción comunitaria y la participación en actividades anunciadas. No puedes automatizar partidas, manipular resultados o Elo, explotar fallos, suplantar a otra persona, acosar, amenazar ni publicar contenido ilícito.</p></section>
     <section><h2>3. Juego limpio y moderación</h2><p>Podemos investigar conductas irregulares y aplicar advertencias, anular resultados, limitar funciones o suspender cuentas cuando sea necesario para proteger a la comunidad. Las decisiones competitivas podrán revisarse cuando exista evidencia suficiente.</p></section>
-    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Los aportes son voluntarios y no conceden ventajas competitivas. En las aplicaciones móviles, los pagos se procesan exclusivamente mediante App Store en iOS o Google Play en Android. Los planes Premium semanal, mensual y anual eliminan anuncios al usar la misma cuenta King Damas en iOS, Android y web. El plan elegido se renueva automáticamente salvo que lo canceles antes de finalizar el periodo vigente. Puedes administrarlo o cancelarlo desde las suscripciones de la tienda donde lo adquiriste. Los precios y condiciones definitivos son los que esa tienda muestra antes de confirmar la compra.</p></section>
+    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Los aportes son voluntarios y no conceden ventajas competitivas. En la web, PayPal procesa los pagos y cada plan Premium añade el periodo elegido a la cuenta. En las aplicaciones móviles, los pagos se procesan exclusivamente mediante App Store en iOS o Google Play en Android y los planes Premium se renuevan automáticamente salvo cancelación. Premium elimina anuncios al usar la misma cuenta King Damas en iOS, Android y web.</p></section>
     <section><h2>5. Disponibilidad y cambios</h2><p>Trabajamos para ofrecer un servicio estable, pero no garantizamos funcionamiento ininterrumpido. Podemos realizar mantenimiento, corregir resultados afectados por errores técnicos y actualizar funciones o estas condiciones. Los cambios importantes serán comunicados dentro de la plataforma y podrán requerir una nueva aceptación.</p></section>
     <section><h2>6. Responsabilidad</h2><p>La plataforma se ofrece según su disponibilidad. En la medida permitida por la ley aplicable, King Damas no responde por interrupciones ajenas a su control, pérdidas indirectas ni decisiones tomadas con base en una clasificación provisional.</p></section>
     <section><h2>7. Legislación y contacto</h2><p>Estas condiciones se interpretan conforme a las leyes aplicables de la República Dominicana. Para preguntas o reclamaciones, escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a>. Puedes consultar como referencia la <a href="https://dgii.gov.do/legislacion/leyesTributarias/Documents/Otras%20Leyes%20de%20Inter%C3%A9s/126-02.pdf" target="_blank" rel="noreferrer">Ley 126-02 sobre comercio electrónico y documentos digitales ↗</a>.</p></section>`;
