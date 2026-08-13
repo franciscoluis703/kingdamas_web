@@ -394,14 +394,16 @@ function bindHeaderNotificationItems() {
       const invitation = headerNotifications?.invitations.find(
         (item) => item.id === button.dataset.notificationChallenge,
       );
-      root.querySelector<HTMLElement>("[data-notification-panel]")?.setAttribute("hidden", "");
-      root.querySelector<HTMLButtonElement>("[data-notifications]")?.setAttribute("aria-expanded", "false");
+      const panel = root.querySelector<HTMLDialogElement>("[data-notification-panel]");
+      if (panel?.open) panel.close();
       if (invitation) showIncomingChallenge(invitation);
     });
   });
   root.querySelectorAll<HTMLButtonElement>("[data-notification-message]").forEach((button) => {
     button.addEventListener("click", () => {
       requestedConversationUsername = button.dataset.notificationMessage || "";
+      const panel = root.querySelector<HTMLDialogElement>("[data-notification-panel]");
+      if (panel?.open) panel.close();
       navigate("/comunidad");
     });
   });
@@ -470,20 +472,37 @@ async function refreshHeaderNotifications(force = false) {
 function bindHeaderNotifications(closeMenu: () => void) {
   const center = root.querySelector<HTMLElement>(".notification-center");
   const button = center?.querySelector<HTMLButtonElement>("[data-notifications]");
-  const panel = center?.querySelector<HTMLElement>("[data-notification-panel]");
+  const panel = center?.querySelector<HTMLDialogElement>("[data-notification-panel]");
   if (!center || !button || !panel) return;
-  const setOpen = (open: boolean) => {
-    panel.hidden = !open;
-    button.setAttribute("aria-expanded", String(open));
-    if (open) closeMenu();
+  const positionPanel = () => {
+    const bounds = button.getBoundingClientRect();
+    panel.style.setProperty("--notification-panel-top", `${Math.round(bounds.bottom + 10)}px`);
+    panel.style.setProperty("--notification-panel-right", `${Math.max(12, Math.round(window.innerWidth - bounds.right))}px`);
   };
-  button.addEventListener("click", () => setOpen(!panel.hidden));
+  const setOpen = (open: boolean) => {
+    if (open) {
+      closeMenu();
+      positionPanel();
+      if (!panel.open) panel.showModal();
+    } else if (panel.open) {
+      panel.close();
+    }
+    button.setAttribute("aria-expanded", String(panel.open));
+  };
+  button.addEventListener("click", () => setOpen(!panel.open));
   panel.querySelector("[data-close-notifications]")?.addEventListener("click", () => setOpen(false));
   panel.querySelector("header [data-refresh-notifications]")?.addEventListener("click", () => {
     void refreshHeaderNotifications(true).catch(() => {});
   });
-  root.querySelector(".app-shell")?.addEventListener("click", (event) => {
-    if (!panel.hidden && !center.contains(event.target as Node)) setOpen(false);
+  panel.addEventListener("close", () => button.setAttribute("aria-expanded", "false"));
+  panel.addEventListener("click", (event) => {
+    if (event.target !== panel) return;
+    const bounds = panel.getBoundingClientRect();
+    const clickedOutside = event.clientX < bounds.left
+      || event.clientX > bounds.right
+      || event.clientY < bounds.top
+      || event.clientY > bounds.bottom;
+    if (clickedOutside) setOpen(false);
   });
   updateHeaderNotifications();
   void refreshHeaderNotifications().catch(() => {});
@@ -769,11 +788,11 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
               ${icon("bell")}
               <span data-notification-count ${notificationCount ? "" : "hidden"}>${notificationCount > 99 ? "99+" : notificationCount}</span>
             </button>
-            <section class="notification-panel" data-notification-panel hidden aria-label="Notificaciones">
+            <dialog class="notification-panel" data-notification-panel aria-label="Notificaciones">
               <header><span><small>ACTIVIDAD RECIENTE</small><b>Notificaciones</b></span><button type="button" data-refresh-notifications aria-label="Actualizar notificaciones">${icon("refresh")}</button><button type="button" data-close-notifications aria-label="Cerrar notificaciones">×</button></header>
               <div class="notification-list" data-notification-list aria-live="polite">${headerNotificationListMarkup()}</div>
               <button class="notification-footer" type="button" data-route="/comunidad">Ver actividad en Comunidad <span aria-hidden="true">→</span></button>
-            </section>
+            </dialog>
           </div>
           <button class="account-chip" type="button" data-player-profile-link="${escapeHtml(currentUser.username)}" aria-label="Ver tu perfil">
             <span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--small">${avatar}</span>
