@@ -67,6 +67,7 @@ import {
   finishNativeStoreTransaction,
   hideNativeAdBanner,
   isIOSNativeApp,
+  isNativeAdsAvailable,
   listenForNativeStoreTransactions,
   manageNativeSubscriptions,
   nativeAdsStatus,
@@ -1175,8 +1176,8 @@ async function confirmAndFinishNativeTransaction(
 }
 
 async function initializeNativeStoreForUser(user: User) {
-  if (!isIOSNativeApp()) return;
-  if (!nativeStoreListenerBound) {
+  if (!isNativeAdsAvailable()) return;
+  if (isIOSNativeApp() && !nativeStoreListenerBound) {
     nativeStoreListenerBound = true;
     await listenForNativeStoreTransactions((transaction) => {
       void confirmAndFinishNativeTransaction(transaction).catch((error) => {
@@ -1190,12 +1191,15 @@ async function initializeNativeStoreForUser(user: User) {
   if (nativeStoreRecoveryUserId === user.id) return;
   nativeStoreRecoveryUserId = user.id;
   try {
+    // La suscripcion y el catalogo son especificos de StoreKit; en Android
+    // nativeSubscriptionStatus() ya devuelve un valor inactivo por defecto,
+    // y syncAccountPremium cae al estado premium del servidor.
     const config = await api.appStoreConfig();
     const subscription = await nativeSubscriptionStatus();
     await syncAccountPremium(subscription, config.appAccountToken);
     const ads = await nativeAdsStatus();
     nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
-    if (config.enabled) {
+    if (isIOSNativeApp() && config.enabled) {
       const transactions = await unfinishedNativeStoreTransactions();
       for (const transaction of transactions) {
         await confirmAndFinishNativeTransaction(transaction);
@@ -1207,7 +1211,7 @@ async function initializeNativeStoreForUser(user: User) {
 }
 
 function showGameCompletionAd() {
-  if (!isIOSNativeApp()) return;
+  if (!isNativeAdsAvailable()) return;
   window.setTimeout(() => {
     void (async () => {
       try {
@@ -5316,7 +5320,7 @@ async function renderRoute() {
     return;
   }
   const isPlayingBoard = /^\/leyenda\/[a-z]+\/(10|30|60)$/.test(path) || /^\/partida\/\d+$/.test(path);
-  if (isIOSNativeApp()) {
+  if (isNativeAdsAvailable()) {
     void (isPlayingBoard ? hideNativeAdBanner() : showNativeAdBanner());
     document.documentElement.classList.toggle("ad-banner-active", !isPlayingBoard);
   }

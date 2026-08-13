@@ -120,6 +120,20 @@ export function isIOSNativeApp() {
   );
 }
 
+export function isAndroidNativeApp() {
+  const capacitor = window.Capacitor;
+  return Boolean(
+    capacitor?.getPlatform?.() === "android" && capacitor.isNativePlatform?.(),
+  );
+}
+
+// Los anuncios (KingDamasAds) tienen la misma interfaz en iOS y Android.
+// Las compras (KingDamasStore) todavía solo estan resueltas del lado del
+// servidor para iOS, por eso isIOSNativeStoreAvailable se mantiene aparte.
+export function isNativeAdsAvailable() {
+  return isIOSNativeApp() || isAndroidNativeApp();
+}
+
 export async function nativeStoreProducts(productIds: string[]) {
   const plugin = storePlugin();
   if (!isIOSNativeStoreAvailable() || !plugin) {
@@ -176,37 +190,37 @@ export async function manageNativeSubscriptions() {
 
 export async function nativeAdsStatus() {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return null;
+  if (!isNativeAdsAvailable() || !plugin) return null;
   return plugin.status();
 }
 
 export async function setNativeAdsPremiumStatus(active: boolean) {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return false;
+  if (!isNativeAdsAvailable() || !plugin) return false;
   return (await plugin.setPremiumStatus({ active })).active;
 }
 
 export async function showNativeGameInterstitial() {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return false;
+  if (!isNativeAdsAvailable() || !plugin) return false;
   return (await plugin.showInterstitial()).shown;
 }
 
 export async function showNativeAdBanner() {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return false;
+  if (!isNativeAdsAvailable() || !plugin) return false;
   return (await plugin.showBanner()).shown;
 }
 
 export async function hideNativeAdBanner() {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return false;
+  if (!isNativeAdsAvailable() || !plugin) return false;
   return (await plugin.hideBanner()).hidden;
 }
 
 export async function showNativeAdPrivacyOptions() {
   const plugin = adsPlugin();
-  if (!isIOSNativeApp() || !plugin) return false;
+  if (!isNativeAdsAvailable() || !plugin) return false;
   return (await plugin.showPrivacyOptions()).presented;
 }
 
