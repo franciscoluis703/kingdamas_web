@@ -593,13 +593,13 @@ const english = new Map<string, string>([
   ["✓ PASE DIRECTO", "✓ DIRECT ENTRY"],
 
   // Camino de Leyendas.
-  ["20 RIVALES · 4 ACTOS", "20 OPPONENTS · 4 ACTS"],
-  ["Supera veinte personajes mitológicos, desde un espíritu ideal para aprender hasta Hades, casi imposible de vencer. Cada victoria abre el siguiente duelo.", "Defeat twenty mythological characters, from a beginner-friendly spirit to Hades, who is nearly impossible to beat. Each win unlocks the next duel."],
+  ["25 RIVALES · 5 ACTOS", "25 OPPONENTS · 5 ACTS"],
+  ["Supera veinticinco personajes mitológicos, desde un espíritu ideal para aprender hasta Thanatos, la muerte misma. Cada victoria abre el siguiente duelo.", "Defeat twenty-five mythological characters, from a beginner-friendly spirit to Thanatos, death itself. Each win unlocks the next duel."],
   ["CAMINO COMPLETADO", "PATH COMPLETE"],
   ["RELOJ POR JUGADOR", "CLOCK PER PLAYER"],
   ["Práctica sin riesgo", "Risk-free practice"],
   ["Estas partidas no modifican tu Elo Damas.", "These matches do not change your Draughts Elo."],
-  ["Cuatro actos, veinte leyendas", "Four acts, twenty legends"],
+  ["Cinco actos, veinticinco leyendas", "Five acts, twenty-five legends"],
   ["Fundamentos, Táctica, Maestría y El Trono. Cada victoria queda guardada y desbloquea el siguiente personaje en todos tus dispositivos.", "Foundations, Tactics, Mastery, and The Throne. Every win is saved and unlocks the next character across all your devices."],
   ["II · Táctica", "II · Tactics"],
   ["III · Maestría", "III · Mastery"],

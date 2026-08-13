@@ -3869,7 +3869,9 @@ function legendRoadCardMarkup(
       ? "II · Táctica"
       : legend.level <= 15
         ? "III · Maestría"
-        : "IV · El Trono";
+        : legend.level <= 20
+          ? "IV · El Trono"
+          : "V · Los Inmortales";
   const state = defeated ? "is-defeated" : unlocked ? "is-unlocked" : "is-locked";
   return `<article class="legend-road-card ${state}" style="--legend-accent:${legend.accent}">
     <span class="legend-road-level"><i>${legend.level}</i></span>
@@ -3897,14 +3899,14 @@ async function renderLegendRoadmap(timeControl: TimeControl) {
     ) || LEGENDS[Math.min(unlockedCount - 1, LEGENDS.length - 1)];
     root.innerHTML = appLayout(`<section class="legend-road-page">
       <header class="legend-road-hero">
-        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>20 RIVALES · 4 ACTOS</span><h1>Camino de Leyendas</h1><p>Supera veinte personajes mitológicos, desde un espíritu ideal para aprender hasta Hades, casi imposible de vencer. Cada victoria abre el siguiente duelo.</p></div>
+        <div><button class="text-button" type="button" data-route="/inicio">← Volver al inicio</button><span class="eyebrow"><i></i>25 RIVALES · 5 ACTOS</span><h1>Camino de Leyendas</h1><p>Supera veinticinco personajes mitológicos, desde un espíritu ideal para aprender hasta Thanatos, la muerte misma. Cada victoria abre el siguiente duelo.</p></div>
         <div class="legend-road-progress"><span>${icon("crown")}</span><p><small>CAMINO COMPLETADO</small><b>${defeatedCount} <i>/ ${LEGENDS.length}</i></b><em><i style="width:${(defeatedCount / LEGENDS.length) * 100}%"></i></em></p></div>
       </header>
       <section class="legend-road-toolbar panel"><div><span class="section-kicker">RELOJ POR JUGADOR</span><div>${TIME_CONTROLS.map((minutes) => `<button class="${minutes === timeControl ? "is-active" : ""}" type="button" data-legend-road-time="${minutes}">${minutes} min</button>`).join("")}</div></div><p><b>Práctica sin riesgo</b><small>Estas partidas no modifican tu Elo Damas.</small></p>${nextLegend ? `<button class="button button--legend" type="button" data-play-legend="${nextLegend.key}">${icon("play")} Continuar con ${escapeHtml(nextLegend.name)}</button>` : ""}</section>
       <section class="legend-roadmap" aria-label="Progresión de leyendas">
         ${LEGENDS.map((legend, index) => legendRoadCardMarkup(legend, index < unlockedCount, defeated.has(legend.key))).join("")}
       </section>
-      <aside class="legend-road-help"><span>i</span><p><b>Cuatro actos, veinte leyendas</b><small>Fundamentos, Táctica, Maestría y El Trono. Cada victoria queda guardada y desbloquea el siguiente personaje en todos tus dispositivos.</small></p></aside>
+      <aside class="legend-road-help"><span>i</span><p><b>Cinco actos, veinticinco leyendas</b><small>Fundamentos, Táctica, Maestría, El Trono y Los Inmortales. Cada victoria queda guardada y desbloquea el siguiente personaje en todos tus dispositivos.</small></p></aside>
     </section>`, "game");
     bindNavigation();
     root.querySelectorAll<HTMLButtonElement>("[data-legend-road-time]").forEach((button) => {

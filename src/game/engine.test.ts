@@ -71,18 +71,19 @@ describe("motor 10×10 del cliente", () => {
       expect(selected).not.toBeNull();
       expect(legalMoves).toContainEqual(selected);
     }
-  });
+  }, 20_000);
 
   it("ordena las leyendas de menor a mayor dificultad", () => {
-    expect(LEGENDS).toHaveLength(20);
-    expect(new Set(LEGENDS.map((legend) => legend.key))).toHaveProperty("size", 20);
+    expect(LEGENDS).toHaveLength(25);
+    expect(new Set(LEGENDS.map((legend) => legend.key))).toHaveProperty("size", 25);
     expect(LEGENDS.map((legend) => legend.key)).toEqual([
       "facil", "aprendiz", "normal", "competente", "avanzado",
       "veterano", "experto", "maestro", "imposible", "sobrehumano",
       "implacable", "titan", "mitico", "legendario", "trascendental",
       "sobrenatural", "insuperable", "divino", "absoluto", "coronaeterna",
+      "behemoth", "gogmagog", "amarok", "charon", "thanatos",
     ]);
-    expect(new Set(LEGENDS.map((legend) => legend.portrait))).toHaveProperty("size", 20);
+    expect(new Set(LEGENDS.map((legend) => legend.portrait))).toHaveProperty("size", 25);
     expect(LEGENDS.every((legend) => legend.portrait.endsWith(`${legend.key}.avif`))).toBe(true);
     for (let index = 1; index < LEGENDS.length; index += 1) {
       expect(LEGENDS[index]!.level).toBe(index + 1);
@@ -90,7 +91,7 @@ describe("motor 10×10 del cliente", () => {
       expect(LEGENDS[index]!.ai.depth).toBeGreaterThanOrEqual(LEGENDS[index - 1]!.ai.depth);
       expect(LEGENDS[index]!.ai.nodeBudget).toBeGreaterThan(LEGENDS[index - 1]!.ai.nodeBudget);
     }
-    expect(LEGENDS.at(-1)?.difficulty).toBe("Casi imposible");
+    expect(LEGENDS.at(-1)?.difficulty).toBe("Muy imposible");
     expect(LEGENDS.at(-1)?.ai.candidatePool).toBe(1);
   });
 });

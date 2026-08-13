@@ -73,12 +73,12 @@ function tacticalValue(move: LegalMove) {
 export function chooseLegendMove(
   board: BoardState,
   player: Side,
-  difficultyKey: LegendDifficultyKey = "coronaeterna",
+  difficultyKey: LegendDifficultyKey = "thanatos",
 ): LegalMove | null {
   const moves = getLegalMoves(board, player);
   if (!moves.length) return null;
   if (moves.length === 1) return moves[0]!;
-  const legend = legendByKey(difficultyKey) || legendByKey("coronaeterna")!;
+  const legend = legendByKey(difficultyKey) || legendByKey("thanatos")!;
   const configuredDepth = legend.ai.depth;
   const depth = moves.length > 14
     ? Math.max(0, configuredDepth - 1)
