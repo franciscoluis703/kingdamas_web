@@ -4,6 +4,7 @@ import { renderPublicLanding } from "./landing";
 import type { User } from "./types";
 import { initializeI18n, useUserLanguage } from "./i18n";
 import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
+import { syncWebAdBanner } from "./webAds";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -43,7 +44,9 @@ async function bootstrap() {
   const passwordReset = window.location.pathname.replace(/\/+$/, "") === "/restablecer";
   const publicContent = isPublicContentPath(normalizePublicPath(window.location.pathname));
   const optimisticLanding = !hasSessionHint() && !sharedInvitation && !passwordReset && !publicContent;
-  if (optimisticLanding) renderPublicLanding(launchApp);
+  // Esperamos a confirmar que no existe una sesión antes de solicitar anuncios,
+  // para que una cuenta Premium nunca genere una impresión durante el arranque.
+  if (optimisticLanding) renderPublicLanding(launchApp, false);
   else {
     root.innerHTML = `<div class="loading-state"><span class="loader"></span><p>Preparando la mesa…</p></div>`;
     // La validación de sesión y la descarga de la interfaz pueden avanzar juntas.
@@ -55,10 +58,12 @@ async function bootstrap() {
     setSessionHint(true);
     await launchApp(user);
   } catch (error) {
-    if (error instanceof ApiError && error.status === 401) setSessionHint(false);
+    const unauthenticated = error instanceof ApiError && error.status === 401;
+    if (unauthenticated) setSessionHint(false);
     else console.warn("No se pudo recuperar la sesión.", error);
     if (sharedInvitation || passwordReset || publicContent) await launchApp(null);
     else if (!optimisticLanding) renderPublicLanding(launchApp);
+    else if (unauthenticated) syncWebAdBanner("/inicio", false);
   }
 }
 

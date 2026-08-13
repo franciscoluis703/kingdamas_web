@@ -3,6 +3,7 @@ import type { User } from "./types";
 import { icon } from "./ui";
 import { languageSelectorMarkup, localeCode } from "./i18n";
 import { decorativeBoardMarkup } from "./game/decorativeBoard";
+import { syncWebAdBanner } from "./webAds";
 
 const root = document.querySelector<HTMLDivElement>("#app")!;
 
@@ -164,7 +165,10 @@ function bindAuthDialog(onAuthenticated: (user: User) => Promise<void>) {
   });
 }
 
-export function renderPublicLanding(onAuthenticated: (user: User) => Promise<void>) {
+export function renderPublicLanding(
+  onAuthenticated: (user: User) => Promise<void>,
+  showAd = true,
+) {
   root.innerHTML = `
     <div class="landing">
       ${publicHeader()}
@@ -206,5 +210,6 @@ export function renderPublicLanding(onAuthenticated: (user: User) => Promise<voi
       ${publicFooterMarkup()}
       ${authDialogMarkup()}
     </div>`;
+  if (showAd) syncWebAdBanner("/inicio", false);
   bindAuthDialog(onAuthenticated);
 }

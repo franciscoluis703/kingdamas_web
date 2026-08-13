@@ -63,6 +63,7 @@ import type {
 } from "./types";
 import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
 import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
+import { removeWebAdBanner, syncWebAdBanner } from "./webAds";
 import {
   finishNativeStoreTransaction,
   hideNativeAdBanner,
@@ -165,6 +166,7 @@ function applyPremiumStatus(
 ) {
   premiumActive = active;
   document.documentElement.dataset.premium = String(active);
+  if (active) removeWebAdBanner();
   if (currentUser) {
     currentUser = {
       ...currentUser,
@@ -388,6 +390,7 @@ function confirmAction({
 }
 
 function bindNavigation() {
+  syncWebAdBanner(route(), premiumActive);
   root.querySelectorAll<HTMLElement>("[data-route]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.route || "/inicio"));
   });
