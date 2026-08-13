@@ -8,6 +8,19 @@ export interface NativeStoreProduct {
   type: string;
 }
 
+export function nativeStoreCatalog<T extends { productId: string }>(
+  configuredProducts: readonly T[],
+  availableProducts: readonly NativeStoreProduct[],
+): Array<T & { product: NativeStoreProduct | null }> {
+  const availableById = new Map(
+    availableProducts.map((product) => [product.id, product]),
+  );
+  return configuredProducts.map((configured) => ({
+    ...configured,
+    product: availableById.get(configured.productId) || null,
+  }));
+}
+
 export interface NativeStoreTransaction {
   transactionId: string;
   originalTransactionId: string;
@@ -16,6 +29,7 @@ export interface NativeStoreTransaction {
   purchaseDate: string;
   environment: string;
   signedTransactionInfo: string;
+  purchaseToken?: string;
 }
 
 export type NativePurchaseResult =
@@ -32,6 +46,7 @@ export interface NativeSubscriptionStatus {
   appAccountToken?: string | null;
   signedTransactionInfo?: string | null;
   signedRenewalInfo?: string | null;
+  purchaseToken?: string | null;
 }
 
 export type NativeSubscriptionPurchaseResult =
@@ -72,8 +87,8 @@ interface KingDamasStorePlugin {
     finished: boolean;
   }>;
   addListener?: (
-    eventName: "transactionUpdated",
-    listener: (transaction: NativeStoreTransaction) => void,
+    eventName: "transactionUpdated" | "subscriptionUpdated",
+    listener: (update: NativeStoreTransaction | NativeSubscriptionStatus) => void,
   ) => Promise<PluginListenerHandle>;
 }
 
@@ -113,6 +128,12 @@ export function isIOSNativeStoreAvailable() {
   );
 }
 
+export function isNativeStoreAvailable() {
+  return Boolean(
+    (isIOSNativeApp() || isAndroidNativeApp()) && storePlugin(),
+  );
+}
+
 export function isIOSNativeApp() {
   const capacitor = window.Capacitor;
   return Boolean(
@@ -127,17 +148,15 @@ export function isAndroidNativeApp() {
   );
 }
 
-// Los anuncios (KingDamasAds) tienen la misma interfaz en iOS y Android.
-// Las compras (KingDamasStore) todavía solo estan resueltas del lado del
-// servidor para iOS, por eso isIOSNativeStoreAvailable se mantiene aparte.
+// Anuncios y compras comparten la misma interfaz en iOS y Android.
 export function isNativeAdsAvailable() {
   return isIOSNativeApp() || isAndroidNativeApp();
 }
 
 export async function nativeStoreProducts(productIds: string[]) {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
-    throw new Error("App Store solo está disponible en la aplicación para iOS.");
+  if (!isNativeStoreAvailable() || !plugin) {
+    throw new Error("La tienda solo está disponible en la aplicación móvil.");
   }
   return (await plugin.getProducts({ productIds })).products;
 }
@@ -147,15 +166,15 @@ export async function purchaseNativeStoreProduct(
   appAccountToken: string,
 ) {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
-    throw new Error("App Store solo está disponible en la aplicación para iOS.");
+  if (!isNativeStoreAvailable() || !plugin) {
+    throw new Error("La tienda solo está disponible en la aplicación móvil.");
   }
   return plugin.purchase({ productId, appAccountToken });
 }
 
 export async function nativeSubscriptionStatus() {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
+  if (!isNativeStoreAvailable() || !plugin) {
     return { active: false, productId: "", expirationDate: null };
   }
   return plugin.subscriptionStatus();
@@ -166,24 +185,24 @@ export async function purchaseNativeSubscription(
   appAccountToken: string,
 ) {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
-    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  if (!isNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación móvil.");
   }
   return plugin.purchaseSubscription({ productId, appAccountToken });
 }
 
 export async function restoreNativeSubscriptions() {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
-    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  if (!isNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación móvil.");
   }
   return plugin.restoreSubscriptions();
 }
 
 export async function manageNativeSubscriptions() {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) {
-    throw new Error("Las suscripciones solo están disponibles en la aplicación para iOS.");
+  if (!isNativeStoreAvailable() || !plugin) {
+    throw new Error("Las suscripciones solo están disponibles en la aplicación móvil.");
   }
   return (await plugin.manageSubscriptions()).presented;
 }
@@ -226,13 +245,13 @@ export async function showNativeAdPrivacyOptions() {
 
 export async function unfinishedNativeStoreTransactions() {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) return [];
+  if (!isNativeStoreAvailable() || !plugin) return [];
   return (await plugin.unfinishedTransactions()).transactions;
 }
 
 export async function finishNativeStoreTransaction(transactionId: string) {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin) return false;
+  if (!isNativeStoreAvailable() || !plugin) return false;
   return (await plugin.finish({ transactionId })).finished;
 }
 
@@ -240,6 +259,18 @@ export async function listenForNativeStoreTransactions(
   listener: (transaction: NativeStoreTransaction) => void,
 ) {
   const plugin = storePlugin();
-  if (!isIOSNativeStoreAvailable() || !plugin?.addListener) return null;
-  return plugin.addListener("transactionUpdated", listener);
+  if (!isNativeStoreAvailable() || !plugin?.addListener) return null;
+  return plugin.addListener("transactionUpdated", (update) => {
+    listener(update as NativeStoreTransaction);
+  });
+}
+
+export async function listenForNativeSubscriptionUpdates(
+  listener: (subscription: NativeSubscriptionStatus) => void,
+) {
+  const plugin = storePlugin();
+  if (!isNativeStoreAvailable() || !plugin?.addListener) return null;
+  return plugin.addListener("subscriptionUpdated", (update) => {
+    listener(update as NativeSubscriptionStatus);
+  });
 }

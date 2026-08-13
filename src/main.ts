@@ -66,11 +66,14 @@ import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
 import {
   finishNativeStoreTransaction,
   hideNativeAdBanner,
-  isIOSNativeApp,
+  isAndroidNativeApp,
+  isNativeStoreAvailable,
   isNativeAdsAvailable,
+  listenForNativeSubscriptionUpdates,
   listenForNativeStoreTransactions,
   manageNativeSubscriptions,
   nativeAdsStatus,
+  nativeStoreCatalog,
   nativeSubscriptionStatus,
   nativeStoreProducts,
   purchaseNativeSubscription,
@@ -140,11 +143,12 @@ let languageListenerBound = false;
 let languageSaveQueue: Promise<void> = Promise.resolve();
 let nativeStoreRecoveryUserId: string | null = null;
 let nativeStoreListenerBound = false;
+let nativeSubscriptionListenerBound = false;
 const nativeStoreConfirmations = new Map<string, Promise<void>>();
 let premiumActive = false;
 let nativeAdPrivacyOptionsRequired = false;
 
-const LEGAL_CONSENT_VERSION = "2026-08-11";
+const LEGAL_CONSENT_VERSION = "2026-08-13";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
 const LEGAL_ROUTES = [
   { path: "/acerca-de", label: "Acerca de", shortLabel: "Acerca de" },
@@ -154,7 +158,11 @@ const LEGAL_ROUTES = [
   { path: "/politica-de-privacidad", label: "Política de privacidad", shortLabel: "Privacidad" },
 ] as const;
 
-function applyPremiumStatus(active: boolean, expiresAt: string | null = null) {
+function applyPremiumStatus(
+  active: boolean,
+  expiresAt: string | null = null,
+  source: NonNullable<User["premium"]>["source"] = null,
+) {
   premiumActive = active;
   document.documentElement.dataset.premium = String(active);
   if (currentUser) {
@@ -162,11 +170,57 @@ function applyPremiumStatus(active: boolean, expiresAt: string | null = null) {
       ...currentUser,
       premium: {
         active,
-        source: active ? "app_store" : null,
+        source: active
+          ? source || currentUser.premium?.source || (isAndroidNativeApp() ? "google_play" : "app_store")
+          : null,
         expiresAt,
       },
     };
   }
+}
+
+const nativeStoreName = () => isAndroidNativeApp() ? "Google Play" : "App Store";
+
+const REQUIRED_NATIVE_STORE_CATALOG: AppStoreConfig["products"] = {
+  tournamentEntry: {
+    productId: "com.kingdamas.app.tournament.qualifier.2027",
+    qualifierYear: 2027,
+  },
+  support: [
+    { productId: "support.small", tier: "small" },
+    { productId: "com.kingdamas.app.support.medium", tier: "medium" },
+    { productId: "support.large", tier: "large" },
+    { productId: "support.champion", tier: "champion" },
+  ],
+  adFree: [
+    { productId: "com.kingdamas.app.noads.subscription.weekly", interval: "weekly", period: "P1W" },
+    { productId: "com.kingdamas.app.noads.subscription.monthly", interval: "monthly", period: "P1M" },
+    { productId: "com.kingdamas.app.noads.subscription.annual", interval: "annual", period: "P1Y" },
+  ],
+};
+
+function completeNativeStoreConfig(config: AppStoreConfig): AppStoreConfig {
+  const supportByTier = new Map(config.products.support.map((product) => [product.tier, product]));
+  const adFreeByInterval = new Map(config.products.adFree.map((product) => [product.interval, product]));
+  return {
+    ...config,
+    products: {
+      tournamentEntry: config.products.tournamentEntry || REQUIRED_NATIVE_STORE_CATALOG.tournamentEntry,
+      support: REQUIRED_NATIVE_STORE_CATALOG.support.map(
+        (fallback) => supportByTier.get(fallback.tier) || fallback,
+      ),
+      adFree: REQUIRED_NATIVE_STORE_CATALOG.adFree.map(
+        (fallback) => adFreeByInterval.get(fallback.interval) || fallback,
+      ),
+    },
+  };
+}
+
+async function nativeStoreConfig() {
+  const config = isAndroidNativeApp()
+    ? await api.playStoreConfig()
+    : await api.appStoreConfig();
+  return completeNativeStoreConfig(config);
 }
 
 async function syncAccountPremium(
@@ -184,10 +238,15 @@ async function syncAccountPremium(
   let response;
   if (subscription?.signedTransactionInfo) {
     try {
-      response = await api.syncAppStoreSubscription(
-        subscription.signedTransactionInfo,
-        subscription.signedRenewalInfo,
-      );
+      response = isAndroidNativeApp()
+        ? await api.syncPlayStoreSubscription(
+            subscription.productId,
+            subscription.purchaseToken || subscription.signedTransactionInfo,
+          )
+        : await api.syncAppStoreSubscription(
+            subscription.signedTransactionInfo,
+            subscription.signedRenewalInfo,
+          );
     } catch (error) {
       if (strict) throw error;
       console.warn("La suscripción local no pertenece a esta cuenta; se usará el estado del servidor.", error);
@@ -196,7 +255,7 @@ async function syncAccountPremium(
   } else {
     response = await api.premiumStatus();
   }
-  applyPremiumStatus(response.premium.active, response.premium.expiresAt);
+  applyPremiumStatus(response.premium.active, response.premium.expiresAt, response.premium.source);
   await setNativeAdsPremiumStatus(response.premium.active);
   return response.premium;
 }
@@ -479,7 +538,7 @@ function publicPageLayout(content: string) {
   return `<div class="landing public-information-shell">${publicHeader()}<main class="public-information-page container">${content}</main>${publicFooterMarkup()}${authDialogMarkup()}</div>`;
 }
 
-function appLayout(content: string, active: "home" | "ranking" | "game" | "watch" | "community" | "tournaments" | "donate" | "credits" | "legal" = "home") {
+function appLayout(content: string, active: "home" | "ranking" | "game" | "watch" | "community" | "tournaments" | "donate" | "premium" | "credits" | "legal" = "home") {
   if (!currentUser) return content;
   const avatar = avatarMarkup(currentUser, "avatar avatar--small");
   return `
@@ -495,12 +554,12 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
           <button class="nav-item ${active === "tournaments" ? "is-active" : ""}" data-route="/torneos">${icon("tournament")}<span>Torneos</span></button>
         </nav>
         <button class="nav-item sidebar-information-link ${active === "legal" ? "is-active" : ""}" type="button" data-route="/informacion"><i>i</i><span>Información</span></button>
-        <button class="sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="/donar">
+        <button class="sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="${isNativeAdsAvailable() ? "/apoyar" : "/donar"}">
           <span class="sidebar-donate-icon">${icon("heart")}</span>
-          <span><small>APOYA EL PROYECTO</small><b>${isIOSNativeApp() ? "Apoyar" : "Donar"}</b></span>
+          <span><small>APOYA EL PROYECTO</small><b>${isNativeAdsAvailable() ? "Apoyar" : "Donar"}</b></span>
           <i aria-hidden="true">→</i>
         </button>
-        ${isIOSNativeApp() ? `<button class="nav-item sidebar-ad-free" type="button" data-route="/donar"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>` : ""}
+        ${isNativeAdsAvailable() ? `<button class="nav-item sidebar-ad-free ${active === "premium" ? "is-active" : ""}" type="button" data-route="/quitar-anuncios"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>` : ""}
         <button class="sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos"><span class="sidebar-credits-icon">©</span><span><b>Créditos</b><small>Autores y licencias</small></span><i aria-hidden="true">→</i></button>
         <button class="nav-item nav-item--logout" data-logout>${icon("logout")}<span>Cerrar sesión</span></button>
       </aside>
@@ -990,7 +1049,7 @@ function bindAuthDialog() {
               password: String(data.get("password")),
             });
         currentUser = response.user;
-        applyPremiumStatus(Boolean(response.user.premium?.active), response.user.premium?.expiresAt || null);
+        applyPremiumStatus(Boolean(response.user.premium?.active), response.user.premium?.expiresAt || null, response.user.premium?.source || null);
         setSessionHint(true);
         dialog.close();
         if (isPasswordResetPath()) clearPasswordResetUrl();
@@ -1161,11 +1220,14 @@ async function confirmAndFinishNativeTransaction(
   const pending = nativeStoreConfirmations.get(transaction.transactionId);
   if (pending) return pending;
   const confirmation = (async () => {
-    const result = await api.confirmAppStoreTransaction(
-      transaction.signedTransactionInfo,
-    );
+    const result = isAndroidNativeApp()
+      ? await api.confirmPlayStoreTransaction(
+          transaction.productId,
+          transaction.purchaseToken || transaction.signedTransactionInfo,
+        )
+      : await api.confirmAppStoreTransaction(transaction.signedTransactionInfo);
     if (result.status !== "COMPLETED") {
-      throw new Error("App Store no pudo confirmar la compra.");
+      throw new Error(`${nativeStoreName()} no pudo confirmar la compra.`);
     }
     await finishNativeStoreTransaction(transaction.transactionId);
   })().finally(() => {
@@ -1177,36 +1239,49 @@ async function confirmAndFinishNativeTransaction(
 
 async function initializeNativeStoreForUser(user: User) {
   if (!isNativeAdsAvailable()) return;
-  if (isIOSNativeApp() && !nativeStoreListenerBound) {
+  if (isNativeStoreAvailable() && !nativeStoreListenerBound) {
     nativeStoreListenerBound = true;
     await listenForNativeStoreTransactions((transaction) => {
       void confirmAndFinishNativeTransaction(transaction).catch((error) => {
-        console.warn("La compra pendiente de App Store todavía no pudo confirmarse.", error);
+        console.warn(`La compra pendiente de ${nativeStoreName()} todavía no pudo confirmarse.`, error);
       });
     }).catch((error) => {
       nativeStoreListenerBound = false;
-      console.warn("No se pudo escuchar las compras de App Store.", error);
+      console.warn(`No se pudo escuchar las compras de ${nativeStoreName()}.`, error);
+    });
+  }
+  if (isAndroidNativeApp() && isNativeStoreAvailable() && !nativeSubscriptionListenerBound) {
+    nativeSubscriptionListenerBound = true;
+    await listenForNativeSubscriptionUpdates((subscription) => {
+      void nativeStoreConfig()
+        .then((config) => syncAccountPremium(subscription, config.appAccountToken, true))
+        .then((premium) => {
+          if (premium.active) toast("Suscripción sin anuncios activada.", "success");
+        })
+        .catch((error) => {
+          console.warn("La actualización de la suscripción de Google Play quedó pendiente.", error);
+        });
+    }).catch((error) => {
+      nativeSubscriptionListenerBound = false;
+      console.warn("No se pudo escuchar las suscripciones de Google Play.", error);
     });
   }
   if (nativeStoreRecoveryUserId === user.id) return;
   nativeStoreRecoveryUserId = user.id;
   try {
-    // La suscripcion y el catalogo son especificos de StoreKit; en Android
-    // nativeSubscriptionStatus() ya devuelve un valor inactivo por defecto,
-    // y syncAccountPremium cae al estado premium del servidor.
-    const config = await api.appStoreConfig();
+    const config = await nativeStoreConfig();
     const subscription = await nativeSubscriptionStatus();
     await syncAccountPremium(subscription, config.appAccountToken);
     const ads = await nativeAdsStatus();
     nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
-    if (isIOSNativeApp() && config.enabled) {
+    if (isNativeStoreAvailable() && config.enabled) {
       const transactions = await unfinishedNativeStoreTransactions();
       for (const transaction of transactions) {
         await confirmAndFinishNativeTransaction(transaction);
       }
     }
   } catch (error) {
-    console.warn("La recuperación de compras de App Store queda pendiente.", error);
+    console.warn(`La recuperación de compras de ${nativeStoreName()} queda pendiente.`, error);
   }
 }
 
@@ -1216,7 +1291,7 @@ function showGameCompletionAd() {
     void (async () => {
       try {
         const { premium } = await api.premiumStatus();
-        applyPremiumStatus(premium.active, premium.expiresAt);
+        applyPremiumStatus(premium.active, premium.expiresAt, premium.source);
         await setNativeAdsPremiumStatus(premium.active);
         if (!premium.active) await showNativeGameInterstitial();
       } catch (error) {
@@ -1295,21 +1370,16 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
 function iosSupportMarkup(
   config: AppStoreConfig,
   products: NativeStoreProduct[],
-  subscriptionActive: boolean,
 ) {
-  const productById = new Map(products.map((product) => [product.id, product]));
-  const adFreePlanLabels: Record<AppStoreConfig["products"]["adFree"][number]["interval"], string> = {
-    weekly: "Semanal",
-    monthly: "Mensual",
-    annual: "Anual",
+  const storeName = nativeStoreName();
+  const storeMark = isAndroidNativeApp() ? "▶" : "";
+  const supportLabels: Record<AppStoreConfig["products"]["support"][number]["tier"], string> = {
+    small: "Apoyo pequeño",
+    medium: "Apoyo mediano",
+    large: "Apoyo grande",
+    champion: "Apoyo campeón",
   };
-  const adFreePlans = config.products.adFree
-    .map(({ productId, interval }) => ({ product: productById.get(productId), interval }))
-    .filter((plan) => Boolean(plan.product)) as Array<{
-      product: NativeStoreProduct;
-      interval: AppStoreConfig["products"]["adFree"][number]["interval"];
-    }>;
-  const available = config.enabled && Boolean(config.appAccountToken) && products.length > 0;
+  const supportProducts = nativeStoreCatalog(config.products.support, products);
   return `
     <section class="page-heading donation-heading">
       <div><span class="eyebrow"><i></i>APOYA KING DAMAS</span><h1>Ayuda a mantener<br>las mesas abiertas</h1><p>Tu aporte voluntario sostiene la continuidad y las mejoras de King Damas.</p></div>
@@ -1317,31 +1387,16 @@ function iosSupportMarkup(
     </section>
     <div class="donation-layout">
       <section class="panel donation-card">
-        <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
-          <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
-          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Sin anuncios en todas tus plataformas"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : "Elimina los anuncios en iOS, Android y web con la misma cuenta de King Damas. Elige el plan que prefieras; se renueva automáticamente hasta que lo canceles."}</p></div>
-          ${subscriptionActive
-            ? `<button class="button button--quiet button--small" type="button" data-manage-ad-free>Administrar suscripción</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compras</button>`
-            : adFreePlans.length && config.appAccountToken
-              ? `<div class="ios-ad-free-plans">${adFreePlans.map(({ product, interval }) => `<button class="button button--outline ios-ad-free-plan" type="button" data-buy-ad-free="${escapeHtml(product.id)}"><small>${adFreePlanLabels[interval]}</small><b>${escapeHtml(product.displayPrice)}</b></button>`).join("")}</div><button class="text-button" type="button" data-restore-ad-free>Restaurar compra</button>`
-              : `<small class="ios-ad-free-unavailable">La suscripción estará disponible cuando App Store termine de configurarla.</small>`}
-          <small class="ios-subscription-terms">El pago se cargará a tu Apple ID. La renovación automática puede cancelarse desde la configuración de suscripciones de App Store al menos 24 horas antes del próximo cobro. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
-          <p class="donation-error" data-ad-free-error aria-live="polite"></p>
-        </section>
-        <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige una opción de apoyo</h2></div><span class="donation-currency">APP STORE</span></div>
-        ${available ? `
-          <div class="donation-amounts ios-support-options">
-            ${config.products.support.map(({ productId }) => {
-              const product = productById.get(productId);
-              if (!product) return "";
-              return `<button type="button" class="donation-amount ios-support-product" data-ios-support-product="${escapeHtml(product.id)}"><small>${escapeHtml(product.displayName)}</small><b>${escapeHtml(product.displayPrice)}</b></button>`;
-            }).join("")}
-          </div>
-          <p class="donation-error" data-donation-error aria-live="polite"></p>
-          <div class="payment-security"><span></span><p><b>Compra procesada por App Store</b><small>Apple gestiona el cobro con tu cuenta; King Damas no recibe tus datos de pago.</small></p></div>
-        ` : `
-          <div class="donation-unavailable"><span>${icon("heart")}</span><h3>Aportes temporalmente no disponibles</h3><p>Las compras de App Store todavía no están configuradas para esta versión.</p></div>
-        `}
+        <div class="panel-heading"><div><span class="section-kicker">APORTE VOLUNTARIO</span><h2>Elige una opción de apoyo</h2></div><span class="donation-currency">${storeName.toUpperCase()}</span></div>
+        <div class="donation-amounts ios-support-options">
+          ${supportProducts.map(({ productId, tier, product }) => {
+            const enabled = Boolean(config.enabled && config.appAccountToken && product);
+            return `<button type="button" class="donation-amount ios-support-product ios-support-product--${tier} ${enabled ? "" : "is-unavailable"}" ${enabled ? `data-ios-support-product="${escapeHtml(productId)}"` : "disabled"}><small>${escapeHtml(supportLabels[tier])}</small><b>${product ? escapeHtml(product.displayPrice) : `Pendiente en ${storeName}`}</b></button>`;
+          }).join("")}
+        </div>
+        <p class="ios-store-catalog-note">Los aportes son compras independientes y no eliminan anuncios.</p>
+        <p class="donation-error" data-donation-error aria-live="polite"></p>
+        <div class="payment-security"><span>${storeMark}</span><p><b>Compra procesada por ${storeName}</b><small>${isAndroidNativeApp() ? "Google Play" : "Apple"} gestiona el cobro con tu cuenta; King Damas no recibe tus datos de pago.</small></p></div>
       </section>
       <aside class="panel donation-purpose">
         <img src="/brand/icon-192.png?v=piece-1" alt="" />
@@ -1353,6 +1408,51 @@ function iosSupportMarkup(
           <li><span>03</span><p><b>Comunidad competitiva</b><small>Un espacio gratuito para jugadores de damas.</small></p></li>
         </ul>
         <p class="donation-fair-play">El aporte es opcional, no desbloquea contenido y no modifica tu Elo Damas ni ofrece ventajas en las partidas.</p>
+      </aside>
+    </div>`;
+}
+
+function iosAdFreeMarkup(
+  config: AppStoreConfig,
+  products: NativeStoreProduct[],
+  subscriptionActive: boolean,
+) {
+  const storeName = nativeStoreName();
+  const planLabels: Record<AppStoreConfig["products"]["adFree"][number]["interval"], string> = {
+    weekly: "Semanal",
+    monthly: "Mensual",
+    annual: "Anual",
+  };
+  const plans = nativeStoreCatalog(config.products.adFree, products);
+  return `
+    <section class="page-heading donation-heading">
+      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Juega sin anuncios<br>en todas tus plataformas</h1><p>La suscripción pertenece a tu cuenta King Damas y se aplica en iOS, Android y web.</p></div>
+      <span class="donation-heart ios-premium-heading-icon">♢</span>
+    </section>
+    <div class="donation-layout">
+      <section class="panel donation-card">
+        <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
+          <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Elige cuánto tiempo jugar sin anuncios"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : `Los planes son suscripciones renovables de ${storeName}. Puedes cambiar o cancelar tu plan desde tu cuenta de ${storeName}.`}</p></div>
+          ${subscriptionActive
+            ? `<button class="button button--quiet button--small" type="button" data-manage-ad-free>Administrar suscripción</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compras</button>`
+            : `<div class="ios-ad-free-plans">${plans.map(({ productId, interval, product }) => {
+                const enabled = Boolean(config.enabled && config.appAccountToken && product);
+                return `<button class="button button--outline ios-ad-free-plan ios-ad-free-plan--${interval} ${enabled ? "" : "is-unavailable"}" type="button" ${enabled ? `data-buy-ad-free="${escapeHtml(productId)}"` : "disabled"}><small>${planLabels[interval]}</small><b>${product ? escapeHtml(product.displayPrice) : `Pendiente en ${storeName}`}</b></button>`;
+              }).join("")}</div><button class="text-button" type="button" data-restore-ad-free ${config.enabled && config.appAccountToken ? "" : "disabled"}>Restaurar compra</button>`}
+          <small class="ios-subscription-terms">El pago se cargará a tu cuenta de ${storeName}. La renovación automática puede cancelarse desde la configuración de suscripciones de ${storeName} antes del próximo cobro. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
+          <p class="donation-error" data-ad-free-error aria-live="polite"></p>
+        </section>
+      </section>
+      <aside class="panel donation-purpose ios-premium-purpose">
+        <img src="/brand/icon-192.png?v=piece-1" alt="" />
+        <span class="section-kicker">UNA SOLA CUENTA</span>
+        <h2>Premium donde juegues</h2>
+        <ul>
+          <li><span>01</span><p><b>Sin anuncios</b><small>No verás anuncios al finalizar las partidas.</small></p></li>
+          <li><span>02</span><p><b>iOS, Android y web</b><small>Inicia sesión con la misma cuenta King Damas.</small></p></li>
+          <li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo ni torneos.</small></p></li>
+        </ul>
         ${nativeAdPrivacyOptionsRequired ? `<button class="text-button ios-ad-privacy" type="button" data-ad-privacy-options>Opciones de privacidad de anuncios</button>` : ""}
       </aside>
     </div>`;
@@ -1383,20 +1483,20 @@ function bindIOSSupport(config: AppStoreConfig) {
           return;
         }
         if (result.state === "pending") {
-          error.textContent = "La compra espera aprobación de App Store. Se confirmará automáticamente.";
+          error.textContent = `La compra espera aprobación de ${nativeStoreName()}. Se confirmará automáticamente.`;
           return;
         }
         if (!result.transaction) return;
         try {
           await confirmAndFinishNativeTransaction(result.transaction);
         } catch (confirmationError) {
-          error.textContent = "Apple confirmó la compra, pero aún debemos acreditarla. La reintentaremos automáticamente; no vuelvas a comprar.";
+          error.textContent = `${nativeStoreName()} confirmó la compra, pero aún debemos acreditarla. La reintentaremos automáticamente; no vuelvas a comprar.`;
           console.warn("La confirmación del aporte quedó pendiente.", confirmationError);
           return;
         }
         const card = root.querySelector<HTMLElement>(".donation-card");
         if (card) {
-          card.innerHTML = `<div class="donation-success"><span>✓</span><small class="section-kicker">APORTE COMPLETADO</small><h2>Gracias por apoyar King Damas</h2><p>Tu aporte voluntario fue confirmado por App Store.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`;
+          card.innerHTML = `<div class="donation-success"><span>✓</span><small class="section-kicker">APORTE COMPLETADO</small><h2>Gracias por apoyar King Damas</h2><p>Tu aporte voluntario fue confirmado por ${nativeStoreName()}.</p><button class="button button--primary" type="button" data-route="/inicio">Volver al inicio</button></div>`;
           bindNavigation();
         }
         toast("¡Gracias por apoyar King Damas!");
@@ -1429,7 +1529,7 @@ function bindIOSSupport(config: AppStoreConfig) {
         }
         if (result.state === "pending") {
           subscribeButtons.forEach((button) => { button.disabled = false; });
-          if (subscriptionError) subscriptionError.textContent = "La suscripción espera aprobación de App Store.";
+          if (subscriptionError) subscriptionError.textContent = `La suscripción espera aprobación de ${nativeStoreName()}.`;
           return;
         }
         if (result.state !== "purchased" || !result.subscription) {
@@ -1438,7 +1538,7 @@ function bindIOSSupport(config: AppStoreConfig) {
         }
         await syncAccountPremium(result.subscription, config.appAccountToken, true);
         toast("Suscripción sin anuncios activada.");
-        await renderDonation();
+        await renderAdFree();
       } catch (subscriptionPurchaseError) {
         subscribeButtons.forEach((button) => { button.disabled = false; });
         if (subscriptionError) subscriptionError.textContent = errorMessage(subscriptionPurchaseError);
@@ -1452,7 +1552,7 @@ function bindIOSSupport(config: AppStoreConfig) {
       const status = await restoreNativeSubscriptions();
       const premium = await syncAccountPremium(status, config.appAccountToken, true);
       toast(premium.active ? "Suscripción sin anuncios restaurada." : "No encontramos una suscripción activa.", premium.active ? "success" : "error");
-      await renderDonation();
+      await renderAdFree();
     } catch (restoreError) {
       restoreButton.disabled = false;
       if (subscriptionError) subscriptionError.textContent = errorMessage(restoreError);
@@ -1479,21 +1579,19 @@ async function renderDonation() {
   root.innerHTML = appLayout(loadingMarkup("Preparando el espacio de donación…"), "donate");
   bindNavigation();
   try {
-    if (isIOSNativeApp()) {
-      const config = await api.appStoreConfig();
-      const products = config.enabled
-        ? await nativeStoreProducts(
-            [
-              ...config.products.support.map((product) => product.productId),
-              ...config.products.adFree.map((product) => product.productId),
-            ],
-          )
-        : [];
-      const subscription = await nativeSubscriptionStatus();
-      const premium = await syncAccountPremium(subscription, config.appAccountToken);
-      const ads = await nativeAdsStatus();
-      nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
-      root.innerHTML = appLayout(iosSupportMarkup(config, products, premium.active), "donate");
+    if (isNativeAdsAvailable()) {
+      const config = await nativeStoreConfig();
+      let products: NativeStoreProduct[] = [];
+      if (config.enabled) {
+        try {
+          products = await nativeStoreProducts(
+            config.products.support.map((product) => product.productId),
+          );
+        } catch (storeError) {
+          console.warn(`${nativeStoreName()} todavía no devolvió los productos de apoyo.`, storeError);
+        }
+      }
+      root.innerHTML = appLayout(iosSupportMarkup(config, products), "donate");
       bindNavigation();
       bindIOSSupport(config);
       return;
@@ -1507,6 +1605,39 @@ async function renderDonation() {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "donate");
     bindNavigation();
     bindRetry(() => renderDonation());
+  }
+}
+
+async function renderAdFree() {
+  if (!isNativeAdsAvailable()) return navigate("/donar");
+  root.innerHTML = appLayout(loadingMarkup("Consultando tus opciones Premium…"), "premium");
+  bindNavigation();
+  try {
+    const config = await nativeStoreConfig();
+    let products: NativeStoreProduct[] = [];
+    if (config.enabled) {
+      try {
+        products = await nativeStoreProducts(
+          config.products.adFree.map((product) => product.productId),
+        );
+      } catch (storeError) {
+        console.warn(`${nativeStoreName()} todavía no devolvió los planes Premium.`, storeError);
+      }
+    }
+    const subscription = await nativeSubscriptionStatus();
+    const premium = await syncAccountPremium(subscription, config.appAccountToken);
+    const ads = await nativeAdsStatus();
+    nativeAdPrivacyOptionsRequired = Boolean(ads?.privacyOptionsRequired);
+    root.innerHTML = appLayout(
+      iosAdFreeMarkup(config, products, premium.active),
+      "premium",
+    );
+    bindNavigation();
+    bindIOSSupport(config);
+  } catch (error) {
+    root.innerHTML = appLayout(errorState(errorMessage(error)), "premium");
+    bindNavigation();
+    bindRetry(() => renderAdFree());
   }
 }
 
@@ -1710,9 +1841,9 @@ function legalContactMarkup() {
 }
 
 function legalCookiesMarkup() {
-  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. La aplicación iOS puede utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
+  return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. Las aplicaciones iOS y Android pueden utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones y puede gestionar datos conforme a sus propias políticas. En la aplicación para iOS, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
+    <section><h2>Servicios externos</h2><p>PayPal solo interviene cuando visitas la sección de donaciones del sitio web y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -1722,7 +1853,7 @@ function legalTermsMarkup() {
     <section><h2>1. Aceptación y cuenta</h2><p>Al crear o utilizar una cuenta confirmas que puedes aceptar estas condiciones. Si eres menor de edad, debes contar con autorización y supervisión de tu padre, madre o tutor legal. Debes proporcionar información válida, proteger tus credenciales y responder por la actividad de tu cuenta.</p></section>
     <section><h2>2. Uso permitido</h2><p>King Damas está destinado al juego de damas internacionales 10×10, la interacción comunitaria y la participación en actividades anunciadas. No puedes automatizar partidas, manipular resultados o Elo, explotar fallos, suplantar a otra persona, acosar, amenazar ni publicar contenido ilícito.</p></section>
     <section><h2>3. Juego limpio y moderación</h2><p>Podemos investigar conductas irregulares y aplicar advertencias, anular resultados, limitar funciones o suspender cuentas cuando sea necesario para proteger a la comunidad. Las decisiones competitivas podrán revisarse cuando exista evidencia suficiente.</p></section>
-    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Las donaciones son voluntarias y no conceden ventajas competitivas. En iOS, la suscripción Premium es anual, se cobra a tu Apple ID y elimina anuncios al usar la misma cuenta King Damas en iOS, Android y web. Se renueva automáticamente salvo que la canceles al menos 24 horas antes de finalizar el periodo vigente. Puedes administrarla o cancelarla desde la configuración de suscripciones de App Store. Los precios y condiciones definitivos son los que App Store muestra antes de confirmar la compra.</p></section>
+    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Los aportes son voluntarios y no conceden ventajas competitivas. En las aplicaciones móviles, los pagos se procesan exclusivamente mediante App Store en iOS o Google Play en Android. Los planes Premium semanal, mensual y anual eliminan anuncios al usar la misma cuenta King Damas en iOS, Android y web. El plan elegido se renueva automáticamente salvo que lo canceles antes de finalizar el periodo vigente. Puedes administrarlo o cancelarlo desde las suscripciones de la tienda donde lo adquiriste. Los precios y condiciones definitivos son los que esa tienda muestra antes de confirmar la compra.</p></section>
     <section><h2>5. Disponibilidad y cambios</h2><p>Trabajamos para ofrecer un servicio estable, pero no garantizamos funcionamiento ininterrumpido. Podemos realizar mantenimiento, corregir resultados afectados por errores técnicos y actualizar funciones o estas condiciones. Los cambios importantes serán comunicados dentro de la plataforma y podrán requerir una nueva aceptación.</p></section>
     <section><h2>6. Responsabilidad</h2><p>La plataforma se ofrece según su disponibilidad. En la medida permitida por la ley aplicable, King Damas no responde por interrupciones ajenas a su control, pérdidas indirectas ni decisiones tomadas con base en una clasificación provisional.</p></section>
     <section><h2>7. Legislación y contacto</h2><p>Estas condiciones se interpretan conforme a las leyes aplicables de la República Dominicana. Para preguntas o reclamaciones, escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a>. Puedes consultar como referencia la <a href="https://dgii.gov.do/legislacion/leyesTributarias/Documents/Otras%20Leyes%20de%20Inter%C3%A9s/126-02.pdf" target="_blank" rel="noreferrer">Ley 126-02 sobre comercio electrónico y documentos digitales ↗</a>.</p></section>`;
@@ -1730,10 +1861,10 @@ function legalTermsMarkup() {
 
 function legalPrivacyMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Compromiso de privacidad</b><p>Usamos los datos necesarios para operar la cuenta, las partidas y la comunidad. No vendemos información personal.</p></aside>
-    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico. En iOS, Google Mobile Ads también puede tratar identificadores del dispositivo, dirección IP, interacciones con anuncios e información de diagnóstico según tu configuración de consentimiento y las opciones permitidas por Apple.</p></section>
+    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico. En iOS y Android, Google Mobile Ads también puede tratar identificadores del dispositivo, dirección IP, interacciones con anuncios e información de diagnóstico según tu configuración de consentimiento y las opciones permitidas por Apple o Google.</p></section>
     <section><h2>2. Para qué los utilizamos</h2><p>Los usamos para autenticarte, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar funciones comunitarias, gestionar torneos y pagos, atender solicitudes, prevenir abuso y mantener la seguridad y estabilidad del servicio.</p></section>
     <section><h2>3. Información visible</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran únicamente a sus participantes, salvo revisión necesaria por seguridad o cumplimiento.</p></section>
-    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos, procesar compras mediante Apple y mostrar anuncios mediante Google Mobile Ads. Algunos pueden procesar información fuera de la República Dominicana conforme a sus propias políticas y mecanismos legales. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida. Cuando corresponda, puedes revisar o cambiar las opciones de privacidad publicitaria desde la sección Apoyar de la aplicación iOS.</p></section>
+    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos, procesar compras mediante Apple o Google y mostrar anuncios mediante Google Mobile Ads. Algunos pueden procesar información fuera de la República Dominicana conforme a sus propias políticas y mecanismos legales. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida. Cuando corresponda, puedes revisar o cambiar las opciones de privacidad publicitaria desde la sección Quitar anuncios de la aplicación móvil.</p></section>
     <section><h2>5. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para seguridad, resolución de disputas y obligaciones legales. Aplicamos controles técnicos y organizativos, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
     <section><h2>6. Tus derechos</h2><p>Puedes solicitar acceso, corrección, actualización o eliminación de tus datos, sujeto a las excepciones legales y registros que debamos conservar. Envía la solicitud desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
     <section><h2>7. Marco y actualizaciones</h2><p>Esta política toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Informaremos cambios relevantes y solicitaremos una nueva confirmación cuando corresponda.</p></section>`;
@@ -1754,7 +1885,7 @@ function legalPageMarkup(path: LegalPath) {
       ? `<button class="${item.path === path ? "is-active" : ""}" type="button" data-route="${item.path}">${content}</button>`
       : `<a class="${item.path === path ? "is-active" : ""}" href="${item.path}">${content}</a>`;
   }).join("");
-  return `<section class="page-heading legal-heading"><div><span class="eyebrow"><i></i>${page.eyebrow}</span><h1>${page.title}</h1><p>${page.description}</p></div><span class="legal-updated"><small>ÚLTIMA ACTUALIZACIÓN</small><b>9 ago 2026</b></span></section>
+  return `<section class="page-heading legal-heading"><div><span class="eyebrow"><i></i>${page.eyebrow}</span><h1>${page.title}</h1><p>${page.description}</p></div><span class="legal-updated"><small>ÚLTIMA ACTUALIZACIÓN</small><b>13 ago 2026</b></span></section>
     <div class="legal-layout">
       <aside class="panel legal-page-menu"><small>INFORMACIÓN</small>${menu}</aside>
       <article class="panel legal-document">${page.body()}<footer><span>${brandMarkMarkup()}</span><p><b>King Damas</b><small>Damas internacionales 10×10 · República Dominicana</small></p></footer></article>
@@ -2762,9 +2893,10 @@ type TournamentPayment =
       config: Awaited<ReturnType<typeof api.donationConfig>>;
     }
   | {
-      kind: "app-store";
+      kind: "native-store";
       config: AppStoreConfig;
       product: NativeStoreProduct | null;
+      championProduct: NativeStoreProduct | null;
     };
 
 function tournamentsMarkup(
@@ -2783,7 +2915,7 @@ function tournamentsMarkup(
   const qualifierState = tournamentStatus(qualifierTournament, "Próxima inscripción");
   const worldState = tournamentStatus(worldTournament, "Próxima edición");
   const entryFee = Number(qualifier.entryFee.amount).toFixed(2);
-  const entryPrice = payment.kind === "app-store"
+  const entryPrice = payment.kind === "native-store"
     ? payment.product?.displayPrice || `${qualifier.entryFee.currency} $${entryFee}`
     : `$${entryFee}`;
   const canRegister = Boolean(
@@ -2835,6 +2967,7 @@ function tournamentsMarkup(
         <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inicio</small><b>${tournamentDate(worldStarts)}</b></span><span><small>Final</small><b>${tournamentDate(worldEnds)}</b></span></div>
         ${worldTitleHoldersMarkup(world)}
         <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString(localeCode())}</b></p>` : ""}</div>
+        ${payment.kind === "native-store" ? `<section class="world-champion-support"><span>♛</span><div><small>APOYO VOLUNTARIO</small><b>Apoya al campeón</b><p>Tu aporte ayuda a sostener el Campeonato Mundial y no concede ventajas competitivas.</p></div><button class="button button--app-store" type="button" ${payment.config.enabled && payment.config.appAccountToken && payment.championProduct ? `data-support-world-champion` : "disabled"}>${isAndroidNativeApp() ? "▶" : ""} Apoyar al campeón${payment.championProduct ? ` · ${escapeHtml(payment.championProduct.displayPrice)}` : ` · Pendiente en ${nativeStoreName()}`}</button><p class="world-champion-support-error" data-world-champion-support-error aria-live="polite"></p></section>` : ""}
         <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Clasificados por país y los tres campeones vigentes.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>El podio cambia de dueño</b><small>Los tres mejores reciben los trofeos hasta la siguiente edición.</small></p></li></ul>
         ${viewerHasWorldPlace ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>${world.viewer?.directlyQualified ? "Tu pase directo al Mundial está confirmado" : "Estás en el Campeonato Mundial"}</b><small>${world.viewer?.directlyQualified ? "Eres parte del podio vigente y no necesitas jugar la clasificatoria." : "Tu clasificación fue registrada automáticamente."}</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático al clasificar por tu país. Los tres campeones vigentes conservan pase directo.</div>`}
       </article>
@@ -2847,14 +2980,14 @@ function tournamentsMarkup(
       <p>Tu inscripción corresponde a la Clasificación al Campeonato Mundial y se confirma al completar el pago.</p>
       <div class="tournament-entry-summary"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>País</small><b>${flag(currentUser?.countryCode || "")} ${escapeHtml(currentUser?.countryCode || "")}</b></span><span><small>Total</small><b>${escapeHtml(entryPrice)}</b></span></div>
       <p class="tournament-entry-error" data-tournament-entry-error aria-live="polite"></p>
-      <div class="tournament-paypal" data-tournament-payment>${payment.kind === "app-store"
+      <div class="tournament-paypal" data-tournament-payment>${payment.kind === "native-store"
         ? payment.config.enabled && payment.config.appAccountToken && payment.product
-          ? `<button class="button button--app-store" type="button" data-purchase-tournament-ios> Inscribirme con App Store · ${escapeHtml(payment.product.displayPrice)}</button>`
-          : `<div class="donation-sdk-error"><b>App Store no está disponible ahora mismo.</b><small>La inscripción no se puede procesar en esta versión.</small></div>`
+          ? `<button class="button button--app-store" type="button" data-purchase-tournament-native>${isAndroidNativeApp() ? "▶" : ""} Inscribirme con ${nativeStoreName()} · ${escapeHtml(payment.product.displayPrice)}</button>`
+          : `<div class="donation-sdk-error"><b>${nativeStoreName()} no está disponible ahora mismo.</b><small>La inscripción no se puede procesar en esta versión.</small></div>`
         : payment.config.enabled
           ? `<span class="loader loader--small"></span><small>Preparando pago seguro…</small>`
           : `<div class="donation-sdk-error"><b>PayPal no está disponible ahora mismo.</b><small>Inténtalo nuevamente más tarde.</small></div>`}</div>
-      <section class="tournament-official-rules"><b>Bases oficiales resumidas</b><ul><li>Organiza King Damas; competencia de habilidad en tablero 10×10.</li><li>Partidas de 30 minutos por jugador; dos derrotas eliminan y clasifican tres jugadores por país.</li><li>Inscripción hasta el ${tournamentDate(registrationEnd)}; competencia del ${tournamentDate(qualifierStarts)} al ${tournamentDate(qualifierEnds)}.</li><li>El Mundial distribuye 20%, 10% y 5% del fondo a los tres primeros puestos.</li></ul><small>Apple no patrocina, organiza ni participa en este torneo.</small></section>
+      <section class="tournament-official-rules"><b>Bases oficiales resumidas</b><ul><li>Organiza King Damas; competencia de habilidad en tablero 10×10.</li><li>Partidas de 30 minutos por jugador; dos derrotas eliminan y clasifican tres jugadores por país.</li><li>Inscripción hasta el ${tournamentDate(registrationEnd)}; competencia del ${tournamentDate(qualifierStarts)} al ${tournamentDate(qualifierEnds)}.</li><li>El Mundial distribuye 20%, 10% y 5% del fondo a los tres primeros puestos.</li></ul><small>Apple y Google no patrocinan, organizan ni participan en este torneo.</small></section>
       <small class="tournament-entry-note">Al continuar aceptas las bases oficiales. La inscripción no mejora tu Elo ni concede ventajas competitivas.</small>
     </dialog>
     <dialog class="tournament-participants-dialog" aria-labelledby="tournament-participants-title">
@@ -2880,13 +3013,28 @@ async function renderTournaments() {
       api.worldChampionship(),
     ]);
     let payment: TournamentPayment;
-    if (isIOSNativeApp()) {
-      const config = await api.appStoreConfig();
+    if (isNativeAdsAvailable()) {
+      const config = await nativeStoreConfig();
       const tournamentProduct = config.products.tournamentEntry;
-      const product = config.enabled && config.appAccountToken
-        ? (await nativeStoreProducts([tournamentProduct.productId]))[0] || null
-        : null;
-      payment = { kind: "app-store", config, product };
+      const championSupport = config.products.support.find((item) => item.tier === "champion");
+      let product: NativeStoreProduct | null = null;
+      let championProduct: NativeStoreProduct | null = null;
+      if (config.enabled && config.appAccountToken && isNativeStoreAvailable()) {
+        try {
+          const requestedProductIds = [
+            tournamentProduct.productId,
+            ...(championSupport ? [championSupport.productId] : []),
+          ];
+          const storeProducts = await nativeStoreProducts(requestedProductIds);
+          product = storeProducts.find((item) => item.id === tournamentProduct.productId) || null;
+          championProduct = championSupport
+            ? storeProducts.find((item) => item.id === championSupport.productId) || null
+            : null;
+        } catch (storeError) {
+          console.warn(`${nativeStoreName()} todavía no devolvió los productos del torneo.`, storeError);
+        }
+      }
+      payment = { kind: "native-store", config, product, championProduct };
     } else {
       payment = { kind: "paypal", config: await api.donationConfig() };
     }
@@ -2938,18 +3086,18 @@ function bindTournaments(
   dialog?.addEventListener("click", (event) => {
     if (event.target === dialog) closeDialog();
   });
-  dialog?.querySelector<HTMLButtonElement>("[data-purchase-tournament-ios]")?.addEventListener("click", async (event) => {
+  dialog?.querySelector<HTMLButtonElement>("[data-purchase-tournament-native]")?.addEventListener("click", async (event) => {
     if (
-      payment.kind !== "app-store" ||
+      payment.kind !== "native-store" ||
       !payment.config.appAccountToken ||
       !payment.product ||
       !tournament ||
       !error
     ) return;
     const button = event.currentTarget as HTMLButtonElement;
-    const originalLabel = button.textContent || "Inscribirme con App Store";
+    const originalLabel = button.textContent || `Inscribirme con ${nativeStoreName()}`;
     button.disabled = true;
-    button.textContent = "Confirmando con App Store…";
+    button.textContent = `Confirmando con ${nativeStoreName()}…`;
     error.textContent = "";
     try {
       const result = await purchaseNativeStoreProduct(
@@ -2963,7 +3111,7 @@ function bindTournaments(
         return;
       }
       if (result.state === "pending") {
-        error.textContent = "La compra espera aprobación de App Store. La inscripción se confirmará automáticamente.";
+        error.textContent = `La compra espera aprobación de ${nativeStoreName()}. La inscripción se confirmará automáticamente.`;
         button.textContent = "Pendiente de aprobación";
         return;
       }
@@ -2971,9 +3119,9 @@ function bindTournaments(
       try {
         await confirmAndFinishNativeTransaction(result.transaction);
       } catch (confirmationError) {
-        error.textContent = "Apple confirmó el cobro, pero la inscripción aún está pendiente. La reintentaremos automáticamente; no vuelvas a comprar.";
+        error.textContent = `${nativeStoreName()} confirmó el cobro, pero la inscripción aún está pendiente. La reintentaremos automáticamente; no vuelvas a comprar.`;
         button.textContent = "Confirmación pendiente";
-        console.warn("La inscripción de App Store quedó pendiente.", confirmationError);
+        console.warn(`La inscripción de ${nativeStoreName()} quedó pendiente.`, confirmationError);
         return;
       }
       dialog?.close();
@@ -2985,10 +3133,49 @@ function bindTournaments(
       button.textContent = originalLabel;
     }
   });
+  root.querySelector<HTMLButtonElement>("[data-support-world-champion]")?.addEventListener("click", async (event) => {
+    if (
+      payment.kind !== "native-store" ||
+      !payment.config.appAccountToken ||
+      !payment.championProduct
+    ) return;
+    const button = event.currentTarget as HTMLButtonElement;
+    const feedback = root.querySelector<HTMLElement>("[data-world-champion-support-error]");
+    const originalLabel = button.textContent || "Apoyar al campeón";
+    button.disabled = true;
+    button.textContent = `Confirmando con ${nativeStoreName()}…`;
+    if (feedback) feedback.textContent = "";
+    try {
+      const result = await purchaseNativeStoreProduct(
+        payment.championProduct.id,
+        payment.config.appAccountToken,
+      );
+      if (result.state === "cancelled") {
+        button.disabled = false;
+        button.textContent = originalLabel;
+        return;
+      }
+      if (result.state === "pending") {
+        button.textContent = "Pendiente de aprobación";
+        if (feedback) {
+          feedback.textContent = `El apoyo espera aprobación de ${nativeStoreName()} y se confirmará automáticamente.`;
+        }
+        return;
+      }
+      if (!result.transaction) return;
+      await confirmAndFinishNativeTransaction(result.transaction);
+      button.textContent = "✓ Apoyo confirmado";
+      toast("Gracias por apoyar al campeón y al Campeonato Mundial.", "success");
+    } catch (supportError) {
+      button.disabled = false;
+      button.textContent = originalLabel;
+      if (feedback) feedback.textContent = errorMessage(supportError);
+    }
+  });
   root.querySelector("[data-open-tournament-entry]")?.addEventListener("click", async () => {
     if (!dialog || !container || !error || !tournament) return;
     dialog.showModal();
-    if (payment.kind === "app-store") return;
+    if (payment.kind === "native-store") return;
     if (!payment.config.enabled || !payment.config.clientId || paymentButtons || initializing) return;
     initializing = true;
     error.textContent = "";
@@ -5329,6 +5516,8 @@ async function renderRoute() {
   if (path === "/clasificacion") return renderLeaderboard();
   if (path === "/comunidad") return renderCommunity();
   if (path === "/torneos") return renderTournaments();
+  if (path === "/apoyar") return isNativeAdsAvailable() ? renderDonation() : navigate("/donar");
+  if (path === "/quitar-anuncios") return renderAdFree();
   if (path === "/donar") return renderDonation();
   if (path === "/creditos") return renderCredits();
   if (path === "/informacion") return renderInformationHub();
@@ -5414,7 +5603,7 @@ async function handleAppLanguageChange(event: Event) {
 export async function startApp(user: User | null) {
   if (user?.language) useUserLanguage(user.language);
   currentUser = user;
-  applyPremiumStatus(Boolean(user?.premium?.active), user?.premium?.expiresAt || null);
+  applyPremiumStatus(Boolean(user?.premium?.active), user?.premium?.expiresAt || null, user?.premium?.source || null);
   bindPlayerProfileNavigation();
   if (!routeListenerBound) {
     window.addEventListener("hashchange", () => void handleHashChange());

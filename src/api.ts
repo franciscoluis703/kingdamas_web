@@ -35,15 +35,27 @@ export interface AppStoreConfig {
     tournamentEntry: {
       productId: string;
       qualifierYear: number;
+      referenceName?: string;
+      price?: number;
+      currency?: string;
+      type?: "consumable" | "auto_renewable_subscription";
     };
     support: Array<{
       productId: string;
       tier: "small" | "medium" | "large" | "champion";
+      referenceName?: string;
+      price?: number;
+      currency?: string;
+      type?: "consumable" | "auto_renewable_subscription";
     }>;
     adFree: Array<{
       productId: string;
       interval: "weekly" | "monthly" | "annual";
       period: "P1W" | "P1M" | "P1Y";
+      referenceName?: string;
+      price?: number;
+      currency?: string;
+      type?: "auto_renewable_subscription";
     }>;
   };
 }
@@ -57,7 +69,7 @@ export interface AppStoreConfirmation {
 
 export interface PremiumEntitlement {
   active: boolean;
-  source: "app_store" | null;
+  source: "app_store" | "google_play" | null;
   expiresAt: string | null;
 }
 
@@ -183,6 +195,17 @@ export const api = {
     method: "POST",
     body: json({ signedTransactionInfo, signedRenewalInfo }),
   }),
+  playStoreConfig: () => request<AppStoreConfig>("/play-store/config"),
+  confirmPlayStoreTransaction: (productId: string, purchaseToken: string) =>
+    request<AppStoreConfirmation>("/play-store/transactions/confirm", {
+      method: "POST",
+      body: json({ productId, purchaseToken }),
+    }),
+  syncPlayStoreSubscription: (productId: string, purchaseToken: string) =>
+    request<{ premium: PremiumEntitlement }>("/play-store/subscriptions/sync", {
+      method: "POST",
+      body: json({ productId, purchaseToken }),
+    }),
   createDonationOrder: (amount: number) =>
     request<{ id: string }>("/donations/create-order", {
       method: "POST",
