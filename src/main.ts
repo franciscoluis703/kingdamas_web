@@ -65,6 +65,7 @@ import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
 import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
 import {
   finishNativeStoreTransaction,
+  hideNativeAdBanner,
   isIOSNativeApp,
   listenForNativeStoreTransactions,
   manageNativeSubscriptions,
@@ -75,6 +76,7 @@ import {
   purchaseNativeStoreProduct,
   restoreNativeSubscriptions,
   setNativeAdsPremiumStatus,
+  showNativeAdBanner,
   showNativeAdPrivacyOptions,
   showNativeGameInterstitial,
   unfinishedNativeStoreTransactions,
@@ -1292,7 +1294,17 @@ function iosSupportMarkup(
   subscriptionActive: boolean,
 ) {
   const productById = new Map(products.map((product) => [product.id, product]));
-  const adFreeProduct = productById.get(config.products.adFreeAnnual.productId);
+  const adFreePlanLabels: Record<AppStoreConfig["products"]["adFree"][number]["interval"], string> = {
+    weekly: "Semanal",
+    monthly: "Mensual",
+    annual: "Anual",
+  };
+  const adFreePlans = config.products.adFree
+    .map(({ productId, interval }) => ({ product: productById.get(productId), interval }))
+    .filter((plan) => Boolean(plan.product)) as Array<{
+      product: NativeStoreProduct;
+      interval: AppStoreConfig["products"]["adFree"][number]["interval"];
+    }>;
   const available = config.enabled && Boolean(config.appAccountToken) && products.length > 0;
   return `
     <section class="page-heading donation-heading">
@@ -1303,11 +1315,11 @@ function iosSupportMarkup(
       <section class="panel donation-card">
         <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
           <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
-          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Un año sin anuncios en todas tus plataformas"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : "Elimina los anuncios en iOS, Android y web con la misma cuenta de King Damas. La suscripción se renueva automáticamente cada año hasta que la canceles."}</p></div>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Sin anuncios en todas tus plataformas"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : "Elimina los anuncios en iOS, Android y web con la misma cuenta de King Damas. Elige el plan que prefieras; se renueva automáticamente hasta que lo canceles."}</p></div>
           ${subscriptionActive
             ? `<button class="button button--quiet button--small" type="button" data-manage-ad-free>Administrar suscripción</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compras</button>`
-            : adFreeProduct && config.appAccountToken
-              ? `<button class="button button--primary" type="button" data-buy-ad-free="${escapeHtml(adFreeProduct.id)}">Suscribirme · ${escapeHtml(adFreeProduct.displayPrice)}/año</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compra</button>`
+            : adFreePlans.length && config.appAccountToken
+              ? `<div class="ios-ad-free-plans">${adFreePlans.map(({ product, interval }) => `<button class="button button--outline ios-ad-free-plan" type="button" data-buy-ad-free="${escapeHtml(product.id)}"><small>${adFreePlanLabels[interval]}</small><b>${escapeHtml(product.displayPrice)}</b></button>`).join("")}</div><button class="text-button" type="button" data-restore-ad-free>Restaurar compra</button>`
               : `<small class="ios-ad-free-unavailable">La suscripción estará disponible cuando App Store termine de configurarla.</small>`}
           <small class="ios-subscription-terms">El pago se cargará a tu Apple ID. La renovación automática puede cancelarse desde la configuración de suscripciones de App Store al menos 24 horas antes del próximo cobro. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
           <p class="donation-error" data-ad-free-error aria-live="polite"></p>
@@ -1392,34 +1404,42 @@ function bindIOSSupport(config: AppStoreConfig) {
   });
 
   const subscriptionError = root.querySelector<HTMLElement>("[data-ad-free-error]");
-  const subscribeButton = root.querySelector<HTMLButtonElement>("[data-buy-ad-free]");
+  const subscribeButtons = [
+    ...root.querySelectorAll<HTMLButtonElement>("[data-buy-ad-free]"),
+  ];
   const restoreButton = root.querySelector<HTMLButtonElement>("[data-restore-ad-free]");
   const manageButton = root.querySelector<HTMLButtonElement>("[data-manage-ad-free]");
-  subscribeButton?.addEventListener("click", async () => {
-    if (!config.appAccountToken || !subscribeButton.dataset.buyAdFree) return;
-    subscribeButton.disabled = true;
-    if (subscriptionError) subscriptionError.textContent = "";
-    try {
-      const result = await purchaseNativeSubscription(
-        subscribeButton.dataset.buyAdFree,
-        config.appAccountToken,
-      );
-      if (result.state === "cancelled") {
-        subscribeButton.disabled = false;
-        return;
+  subscribeButtons.forEach((subscribeButton) => {
+    subscribeButton.addEventListener("click", async () => {
+      if (!config.appAccountToken || !subscribeButton.dataset.buyAdFree) return;
+      subscribeButtons.forEach((button) => { button.disabled = true; });
+      if (subscriptionError) subscriptionError.textContent = "";
+      try {
+        const result = await purchaseNativeSubscription(
+          subscribeButton.dataset.buyAdFree,
+          config.appAccountToken,
+        );
+        if (result.state === "cancelled") {
+          subscribeButtons.forEach((button) => { button.disabled = false; });
+          return;
+        }
+        if (result.state === "pending") {
+          subscribeButtons.forEach((button) => { button.disabled = false; });
+          if (subscriptionError) subscriptionError.textContent = "La suscripción espera aprobación de App Store.";
+          return;
+        }
+        if (result.state !== "purchased" || !result.subscription) {
+          subscribeButtons.forEach((button) => { button.disabled = false; });
+          return;
+        }
+        await syncAccountPremium(result.subscription, config.appAccountToken, true);
+        toast("Suscripción sin anuncios activada.");
+        await renderDonation();
+      } catch (subscriptionPurchaseError) {
+        subscribeButtons.forEach((button) => { button.disabled = false; });
+        if (subscriptionError) subscriptionError.textContent = errorMessage(subscriptionPurchaseError);
       }
-      if (result.state === "pending") {
-        if (subscriptionError) subscriptionError.textContent = "La suscripción espera aprobación de App Store.";
-        return;
-      }
-      if (result.state !== "purchased" || !result.subscription) return;
-      await syncAccountPremium(result.subscription, config.appAccountToken, true);
-      toast("Suscripción sin anuncios activada.");
-      await renderDonation();
-    } catch (subscriptionPurchaseError) {
-      subscribeButton.disabled = false;
-      if (subscriptionError) subscriptionError.textContent = errorMessage(subscriptionPurchaseError);
-    }
+    });
   });
   restoreButton?.addEventListener("click", async () => {
     restoreButton.disabled = true;
@@ -1461,7 +1481,7 @@ async function renderDonation() {
         ? await nativeStoreProducts(
             [
               ...config.products.support.map((product) => product.productId),
-              config.products.adFreeAnnual.productId,
+              ...config.products.adFree.map((product) => product.productId),
             ],
           )
         : [];
@@ -5289,8 +5309,14 @@ async function renderRoute() {
   if (path === "/como-jugar") return renderHowToPlay();
   if (isLegalPath(path)) return renderLegalPage(path);
   if (!currentUser) {
+    void hideNativeAdBanner();
     renderLanding();
     return;
+  }
+  const isPlayingBoard = /^\/leyenda\/[a-z]+\/(10|30|60)$/.test(path) || /^\/partida\/\d+$/.test(path);
+  if (isIOSNativeApp()) {
+    void (isPlayingBoard ? hideNativeAdBanner() : showNativeAdBanner());
+    document.documentElement.classList.toggle("ad-banner-active", !isPlayingBoard);
   }
   const profileMatch = path.match(/^\/perfil\/([a-z0-9_]{3,24})$/i);
   if (profileMatch?.[1]) return renderPlayerProfile(profileMatch[1].toLowerCase());

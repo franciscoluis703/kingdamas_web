@@ -40,10 +40,11 @@ export interface AppStoreConfig {
       productId: string;
       tier: "small" | "medium" | "large" | "champion";
     }>;
-    adFreeAnnual: {
+    adFree: Array<{
       productId: string;
-      period: "P1Y";
-    };
+      interval: "weekly" | "monthly" | "annual";
+      period: "P1W" | "P1M" | "P1Y";
+    }>;
   };
 }
 

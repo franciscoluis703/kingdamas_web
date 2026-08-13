@@ -416,6 +416,10 @@ a { color: inherit; text-decoration: none; }
 .ios-ad-free-card h2 { margin: 3px 0 5px; color: var(--cream); font-size: 20px; }
 .ios-ad-free-card p { margin: 0; color: #8fa399; font-size: 11px; line-height: 1.5; }
 .ios-ad-free-card > .button, .ios-ad-free-card > .text-button, .ios-ad-free-unavailable { grid-column: 1 / -1; }
+.ios-ad-free-plans { grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; }
+.ios-ad-free-plan { flex: 1 1 90px; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 8px; }
+.ios-ad-free-plan small { color: #8fa399; font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.ios-ad-free-plan b { color: var(--cream); font-size: 14px; }
 .ios-subscription-terms { grid-column: 1 / -1; color: #6f8378; font-size: 9px; line-height: 1.5; }
 .ios-subscription-terms a { color: #aabdb3; }
 .ios-ad-free-card .donation-error { grid-column: 1 / -1; margin: 0; }
@@ -1597,11 +1601,13 @@ html[data-premium="true"] [data-ad-slot] { display: none !important; }
   .mobile-brand { display: inline-flex; }
   .mobile-brand .brand-name { display: none; }
   .mobile-brand .brand-mark { width: 34px; height: 34px; }
-  .bottom-nav { position: fixed; z-index: 19; inset: auto 0 0; height: calc(64px + env(safe-area-inset-bottom)); padding: 5px 12px env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid var(--line); background: rgba(7,22,17,.96); backdrop-filter: blur(15px); }
+  .bottom-nav { position: fixed; z-index: 19; inset: auto 0 0; height: calc(64px + env(safe-area-inset-bottom)); padding: 5px 12px env(safe-area-inset-bottom); display: grid; grid-template-columns: repeat(3,1fr); border-top: 1px solid var(--line); background: rgba(7,22,17,.96); backdrop-filter: blur(15px); transition: bottom .2s ease; }
   .bottom-nav button { display: grid; justify-items: center; align-content: center; gap: 2px; border: 0; color: #667d71; background: transparent; font-size: 9px; }
   .bottom-nav button .icon { width: 19px; }
   .bottom-nav button.is-active { color: var(--green-bright); }
   .app-content { width: min(100% - 28px, 710px); padding: 32px 0 95px; }
+  .ad-banner-active .bottom-nav { bottom: 50px; }
+  .ad-banner-active .app-content { padding-bottom: 145px; }
   .game-page { margin-top: -10px; }
   .game-layout { grid-template-columns: 1fr; }
   .game-sidebar { display: none; position: fixed; z-index: 80; inset: 90px 14px 78px; height: auto; min-height: 0; background: #0d251c; box-shadow: 0 25px 70px rgba(0,0,0,.55); }

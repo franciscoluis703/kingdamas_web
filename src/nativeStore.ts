@@ -81,6 +81,8 @@ interface KingDamasAdsPlugin {
   status: () => Promise<NativeAdsStatus>;
   setPremiumStatus: (options: { active: boolean }) => Promise<{ active: boolean }>;
   showInterstitial: () => Promise<{ shown: boolean; reason?: string }>;
+  showBanner: () => Promise<{ shown: boolean; reason?: string }>;
+  hideBanner: () => Promise<{ hidden: boolean }>;
   showPrivacyOptions: () => Promise<{ presented: boolean }>;
 }
 
@@ -188,6 +190,18 @@ export async function showNativeGameInterstitial() {
   const plugin = adsPlugin();
   if (!isIOSNativeApp() || !plugin) return false;
   return (await plugin.showInterstitial()).shown;
+}
+
+export async function showNativeAdBanner() {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return false;
+  return (await plugin.showBanner()).shown;
+}
+
+export async function hideNativeAdBanner() {
+  const plugin = adsPlugin();
+  if (!isIOSNativeApp() || !plugin) return false;
+  return (await plugin.hideBanner()).hidden;
 }
 
 export async function showNativeAdPrivacyOptions() {
