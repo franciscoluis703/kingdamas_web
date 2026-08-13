@@ -67,6 +67,10 @@ export function robotsText() {
   return `User-agent: *\nAllow: /\nDisallow: /api/\nDisallow: /socket.io/\nDisallow: /*?invitacion=\n\nSitemap: ${CANONICAL_ORIGIN}/sitemap.xml\n`;
 }
 
+export function adsText() {
+  return "google.com, pub-3889117121292163, DIRECT, f08c47fec0942fa0\n";
+}
+
 export function sitemapXml() {
   const urls = Object.entries(SEO_PAGES).map(([path, page]) => {
     const location = path === "/" ? `${CANONICAL_ORIGIN}/` : `${CANONICAL_ORIGIN}${path}`;
@@ -278,6 +282,9 @@ export default {
     }
     if (pathname === "/robots.txt") {
       return new Response(robotsText(), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
+    }
+    if (pathname === "/ads.txt" || pathname === "/app-ads.txt") {
+      return new Response(adsText(), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" } });
     }
     if (pathname === "/sitemap.xml") {
       return new Response(sitemapXml(), { headers: { "content-type": "application/xml; charset=utf-8", "cache-control": "public, max-age=3600" } });

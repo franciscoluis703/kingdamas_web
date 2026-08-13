@@ -77,6 +77,13 @@ describe("proxy de Cloudflare", () => {
     expect(robotsText()).toContain("Sitemap: https://kingdamas.com/sitemap.xml");
   });
 
+  it("publica la autorización de Google para web y aplicaciones", async () => {
+    const { adsText } = await import("./index.js");
+    expect(adsText()).toBe(
+      "google.com, pub-3889117121292163, DIRECT, f08c47fec0942fa0\n",
+    );
+  });
+
   it("genera un sitemap XML con las páginas públicas y sin rutas hash", () => {
     const sitemap = sitemapXml();
     expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
