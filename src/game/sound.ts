@@ -37,9 +37,15 @@ export const AUDIO_CREDITS = Object.freeze({
 });
 
 let backgroundTrack: HTMLAudioElement | null = null;
+let backgroundAudioContext: AudioContext | null = null;
+let backgroundGain: GainNode | null = null;
 let backgroundRequested = false;
 let unlockListenersAttached = false;
 const effects = new Map<string, HTMLAudioElement>();
+
+type AudioContextWindow = Window & typeof globalThis & {
+  webkitAudioContext?: typeof AudioContext;
+};
 
 function stored(key: string, fallback: boolean) {
   const value = localStorage.getItem(key);
@@ -67,6 +73,32 @@ function createBackgroundTrack() {
   return backgroundTrack;
 }
 
+// Safari y WKWebView en iOS pueden ignorar HTMLMediaElement.volume. En esos
+// dispositivos el GainNode permite controlar la música dentro de la app sin
+// modificar el volumen físico del teléfono. Si Web Audio no está disponible,
+// el elemento HTML conserva el comportamiento anterior como respaldo.
+function createBackgroundAudioGraph() {
+  if (backgroundAudioContext && backgroundGain) return backgroundAudioContext;
+  const AudioContextConstructor = window.AudioContext
+    || (window as AudioContextWindow).webkitAudioContext;
+  if (!AudioContextConstructor) return null;
+  try {
+    const context = new AudioContextConstructor();
+    const source = context.createMediaElementSource(createBackgroundTrack());
+    const gain = context.createGain();
+    gain.gain.value = storedBackgroundVolume();
+    source.connect(gain);
+    gain.connect(context.destination);
+    backgroundAudioContext = context;
+    backgroundGain = gain;
+    // El volumen efectivo lo controla GainNode; evitamos aplicarlo dos veces.
+    backgroundTrack!.volume = 1;
+    return context;
+  } catch {
+    return null;
+  }
+}
+
 function removeUnlockListeners() {
   if (!unlockListenersAttached) return;
   document.removeEventListener("pointerdown", unlockBackground, true);
@@ -84,6 +116,8 @@ function attachUnlockListeners() {
 async function tryBackgroundPlayback() {
   if (!backgroundRequested || !stored(BACKGROUND_SOUND_KEY, DEFAULT_BACKGROUND_SOUND)) return;
   try {
+    const context = createBackgroundAudioGraph();
+    if (context?.state === "suspended") await context.resume();
     await createBackgroundTrack().play();
     removeUnlockListeners();
   } catch {
@@ -163,5 +197,10 @@ export function setBackgroundVolume(volume: number) {
     ? Math.min(Math.max(volume, 0), 1)
     : DEFAULT_BACKGROUND_VOLUME;
   localStorage.setItem(BACKGROUND_VOLUME_KEY, String(safeVolume));
-  if (backgroundTrack) backgroundTrack.volume = safeVolume;
+  if (backgroundGain && backgroundAudioContext) {
+    backgroundGain.gain.cancelScheduledValues(backgroundAudioContext.currentTime);
+    backgroundGain.gain.setValueAtTime(safeVolume, backgroundAudioContext.currentTime);
+  } else if (backgroundTrack) {
+    backgroundTrack.volume = safeVolume;
+  }
 }

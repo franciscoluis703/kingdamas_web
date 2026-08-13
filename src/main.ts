@@ -5731,13 +5731,20 @@ function bindGameSettings(actions: {
     setBackgroundSound(enabled);
     updateSwitch(button, enabled);
   });
-  root.querySelector<HTMLInputElement>("[data-background-volume]")?.addEventListener("input", (event) => {
-    const input = event.currentTarget as HTMLInputElement;
-    const percentage = Number(input.value);
+  const backgroundVolumeInput = root.querySelector<HTMLInputElement>("[data-background-volume]");
+  const updateBackgroundVolume = (input: HTMLInputElement) => {
+    const percentage = Math.min(Math.max(Number(input.value) || 0, 0), 100);
     setBackgroundVolume(percentage / 100);
     input.style.setProperty("--volume-progress", `${percentage}%`);
     const output = root.querySelector<HTMLOutputElement>("[data-background-volume-output]");
     if (output) output.value = `${percentage}%`;
+  };
+  backgroundVolumeInput?.addEventListener("input", (event) => {
+    updateBackgroundVolume(event.currentTarget as HTMLInputElement);
+  });
+  // Algunos WebView antiguos solo notifican el valor definitivo con change.
+  backgroundVolumeInput?.addEventListener("change", (event) => {
+    updateBackgroundVolume(event.currentTarget as HTMLInputElement);
   });
   return closeMenu;
 }
