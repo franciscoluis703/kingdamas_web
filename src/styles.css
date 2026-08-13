@@ -317,7 +317,7 @@ a { color: inherit; text-decoration: none; }
 .delete-account-form .button--danger { color: #fff4f1; background: #a63d32; border-color: #a63d32; }
 .delete-account-form .button--danger:hover:not(:disabled) { background: #bb4a3d; }
 .app-content { width: min(1200px, calc(100% - clamp(32px, 8vw, 108px))); margin-inline: auto; padding: 46px 0 70px; }
-.web-ad-banner { width: 100%; min-height: 100px; margin: 0 0 34px; display: block; overflow: hidden; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(255,255,255,.018); }
+.web-ad-banner { width: 100%; min-height: 100px; margin: 34px 0 0; display: block; overflow: hidden; border: 1px solid rgba(255,255,255,.07); border-radius: 12px; background: rgba(255,255,255,.018); }
 .web-ad-banner .adsbygoogle { width: 100%; min-height: 100px; }
 html[data-premium="true"] .web-ad-banner { display: none !important; }
 .landing > .web-ad-banner { width: min(1180px, calc(100% - 40px)); margin: 22px auto 0; }

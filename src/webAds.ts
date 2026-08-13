@@ -89,9 +89,9 @@ export function syncWebAdBanner(path: string, premium: boolean) {
 
     const appContent = appRoot.querySelector<HTMLElement>(".app-content");
     const publicMain = appRoot.querySelector<HTMLElement>(".landing > main");
-    if (appContent) appContent.prepend(banner);
-    else if (publicMain) publicMain.before(banner);
-    else appRoot.prepend(banner);
+    if (appContent) appContent.append(banner);
+    else if (publicMain) publicMain.after(banner);
+    else appRoot.append(banner);
   }
 
   ensureAdsenseScript();
