@@ -37,11 +37,14 @@ export const AUDIO_CREDITS = Object.freeze({
 });
 
 let backgroundTrack: HTMLAudioElement | null = null;
-let backgroundAudioContext: AudioContext | null = null;
+let sharedAudioContext: AudioContext | null = null;
 let backgroundGain: GainNode | null = null;
 let backgroundRequested = false;
 let unlockListenersAttached = false;
-const effects = new Map<string, HTMLAudioElement>();
+const effects = new Map<string, {
+  sound: HTMLAudioElement;
+  context: AudioContext | null;
+}>();
 
 type AudioContextWindow = Window & typeof globalThis & {
   webkitAudioContext?: typeof AudioContext;
@@ -73,23 +76,33 @@ function createBackgroundTrack() {
   return backgroundTrack;
 }
 
+function createAudioContext() {
+  if (sharedAudioContext) return sharedAudioContext;
+  const AudioContextConstructor = window.AudioContext
+    || (window as AudioContextWindow).webkitAudioContext;
+  if (!AudioContextConstructor) return null;
+  try {
+    sharedAudioContext = new AudioContextConstructor();
+    return sharedAudioContext;
+  } catch {
+    return null;
+  }
+}
+
 // Safari y WKWebView en iOS pueden ignorar HTMLMediaElement.volume. En esos
 // dispositivos el GainNode permite controlar la música dentro de la app sin
 // modificar el volumen físico del teléfono. Si Web Audio no está disponible,
 // el elemento HTML conserva el comportamiento anterior como respaldo.
 function createBackgroundAudioGraph() {
-  if (backgroundAudioContext && backgroundGain) return backgroundAudioContext;
-  const AudioContextConstructor = window.AudioContext
-    || (window as AudioContextWindow).webkitAudioContext;
-  if (!AudioContextConstructor) return null;
+  if (sharedAudioContext && backgroundGain) return sharedAudioContext;
+  const context = createAudioContext();
+  if (!context) return null;
   try {
-    const context = new AudioContextConstructor();
     const source = context.createMediaElementSource(createBackgroundTrack());
     const gain = context.createGain();
     gain.gain.value = storedBackgroundVolume();
     source.connect(gain);
     gain.connect(context.destination);
-    backgroundAudioContext = context;
     backgroundGain = gain;
     // El volumen efectivo lo controla GainNode; evitamos aplicarlo dos veces.
     backgroundTrack!.volume = 1;
@@ -138,15 +151,37 @@ function effect(url: string, volume: number) {
   const sound = new Audio(url);
   sound.preload = "none";
   sound.volume = volume;
-  effects.set(url, sound);
-  return sound;
+  const context = createAudioContext();
+  if (context) {
+    try {
+      const source = context.createMediaElementSource(sound);
+      const gain = context.createGain();
+      gain.gain.value = volume;
+      source.connect(gain);
+      gain.connect(context.destination);
+      sound.volume = 1;
+    } catch {
+      // El volumen del elemento queda como respaldo si Web Audio no puede
+      // conectar este recurso en el navegador actual.
+    }
+  }
+  const channel = { sound, context };
+  effects.set(url, channel);
+  return channel;
 }
 
 function playEffect(url: string, volume: number) {
-  const sound = effect(url, volume);
+  const { sound, context } = effect(url, volume);
   sound.pause();
   sound.currentTime = 0;
-  void sound.play().catch(() => {});
+  void (async () => {
+    try {
+      if (context?.state === "suspended") await context.resume();
+      await sound.play();
+    } catch {
+      // El navegador puede bloquear audio hasta la próxima interacción.
+    }
+  })();
 }
 
 export function setMoveSound(enabled: boolean) {
@@ -197,9 +232,9 @@ export function setBackgroundVolume(volume: number) {
     ? Math.min(Math.max(volume, 0), 1)
     : DEFAULT_BACKGROUND_VOLUME;
   localStorage.setItem(BACKGROUND_VOLUME_KEY, String(safeVolume));
-  if (backgroundGain && backgroundAudioContext) {
-    backgroundGain.gain.cancelScheduledValues(backgroundAudioContext.currentTime);
-    backgroundGain.gain.setValueAtTime(safeVolume, backgroundAudioContext.currentTime);
+  if (backgroundGain && sharedAudioContext) {
+    backgroundGain.gain.cancelScheduledValues(sharedAudioContext.currentTime);
+    backgroundGain.gain.setValueAtTime(safeVolume, sharedAudioContext.currentTime);
   } else if (backgroundTrack) {
     backgroundTrack.volume = safeVolume;
   }

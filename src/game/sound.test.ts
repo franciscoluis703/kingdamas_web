@@ -99,4 +99,61 @@ describe("volumen de la música de fondo", () => {
     expect(audioInstances[0]?.volume).toBe(0.15);
     expect(sound.soundPreferences().backgroundVolume).toBe(0.15);
   });
+
+  it("aplica ganancia compatible a movimientos y capturas", async () => {
+    vi.useFakeTimers();
+    const gainValues: number[] = [];
+    class FakeAudioContext {
+      state = "running";
+      currentTime = 0;
+      destination = {};
+      createMediaElementSource = vi.fn(() => ({ connect: vi.fn() }));
+      createGain = vi.fn(() => {
+        const gain = {
+          value: 1,
+          cancelScheduledValues: vi.fn(),
+          setValueAtTime: vi.fn(),
+        };
+        gainValues.push(gain.value);
+        return {
+          gain: new Proxy(gain, {
+            set(target, property, value) {
+              Reflect.set(target, property, value);
+              if (property === "value") gainValues[gainValues.length - 1] = Number(value);
+              return true;
+            },
+          }),
+          connect: vi.fn(),
+        };
+      });
+      resume = vi.fn(async () => {});
+    }
+    class FakeAudio {
+      loop = false;
+      preload = "";
+      volume = 1;
+      currentTime = 0;
+      play = vi.fn(async () => {});
+      pause = vi.fn();
+    }
+    vi.stubGlobal("Audio", FakeAudio);
+    vi.stubGlobal("AudioContext", FakeAudioContext);
+    vi.stubGlobal("window", {
+      AudioContext: FakeAudioContext,
+      setTimeout,
+    });
+    vi.stubGlobal("document", {
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+
+    const sound = await import("./sound");
+    sound.playMoveSound();
+    sound.playCaptureSound();
+    await vi.runAllTimersAsync();
+
+    expect(gainValues).toContain(0.1);
+    expect(gainValues).toContain(0.45);
+    vi.useRealTimers();
+  });
 });
