@@ -148,6 +148,18 @@ let nativeSubscriptionListenerBound = false;
 const nativeStoreConfirmations = new Map<string, Promise<void>>();
 let premiumActive = false;
 let nativeAdPrivacyOptionsRequired = false;
+let nativeAdBannerSyncQueue: Promise<void> = Promise.resolve();
+interface HeaderNotificationSnapshot {
+  userId: string;
+  invitations: DirectInvitation[];
+  conversations: DirectConversation[];
+  unreadMessageCount: number;
+}
+let headerNotifications: HeaderNotificationSnapshot | null = null;
+let headerNotificationsRequest: Promise<HeaderNotificationSnapshot> | null = null;
+let headerNotificationsUpdatedAt = 0;
+let headerNotificationsError = false;
+let requestedConversationUsername = "";
 
 const LEGAL_CONSENT_VERSION = "2026-08-13";
 const SESSION_HINT_KEY = "kingdamas_session_hint";
@@ -259,6 +271,7 @@ async function syncAccountPremium(
   }
   applyPremiumStatus(response.premium.active, response.premium.expiresAt, response.premium.source);
   await setNativeAdsPremiumStatus(response.premium.active);
+  await syncNativeAdBannerForRoute();
   return response.premium;
 }
 type LegalPath = (typeof LEGAL_ROUTES)[number]["path"];
@@ -312,6 +325,168 @@ function toast(message: string, kind: "success" | "error" = "success") {
   document.body.append(element);
   requestAnimationFrame(() => element.classList.add("is-visible"));
   toastTimer = window.setTimeout(() => element.remove(), 3800);
+}
+
+function headerNotificationCount() {
+  if (!currentUser || headerNotifications?.userId !== currentUser.id) return 0;
+  return headerNotifications.invitations.length + headerNotifications.unreadMessageCount;
+}
+
+function resetHeaderNotifications() {
+  headerNotifications = null;
+  headerNotificationsRequest = null;
+  headerNotificationsUpdatedAt = 0;
+  headerNotificationsError = false;
+  requestedConversationUsername = "";
+}
+
+function headerNotificationListMarkup() {
+  if (headerNotificationsError && !headerNotifications) {
+    return `<div class="notification-empty notification-empty--error"><span>!</span><b>No pudimos cargar tus notificaciones.</b><button type="button" data-refresh-notifications>Intentar de nuevo</button></div>`;
+  }
+  if (!headerNotifications || headerNotifications.userId !== currentUser?.id) {
+    return `<div class="notification-loading"><span class="loader loader--small"></span><p>Cargando notificaciones…</p></div>`;
+  }
+
+  const items = [
+    ...headerNotifications.invitations.map((invitation) => ({
+      kind: "challenge" as const,
+      createdAt: invitation.createdAt,
+      invitation,
+    })),
+    ...headerNotifications.conversations
+      .filter((conversation) => conversation.unreadCount > 0)
+      .map((conversation) => ({
+        kind: "message" as const,
+        createdAt: conversation.lastMessageAt,
+        conversation,
+      })),
+  ]
+    .sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt))
+    .slice(0, LIST_PAGE_SIZE);
+
+  if (!items.length) {
+    return `<div class="notification-empty"><span>✓</span><b>Todo al día</b><p>No tienes notificaciones pendientes.</p></div>`;
+  }
+
+  return items.map((item) => {
+    if (item.kind === "challenge") {
+      const { invitation } = item;
+      return `<button class="notification-item" type="button" data-notification-challenge="${escapeHtml(invitation.id)}">
+        ${avatarMarkup(invitation.opponent, "avatar avatar--notification")}
+        <span><small>DESAFÍO PENDIENTE</small><b>@${escapeHtml(invitation.opponent.username)} te desafía</b><em>10 × 10 · ${invitation.timeControlMinutes} min por jugador</em></span>
+        <i aria-hidden="true">→</i>
+      </button>`;
+    }
+    const { conversation } = item;
+    const unreadLabel = conversation.unreadCount === 1 ? "MENSAJE NUEVO" : "MENSAJES NUEVOS";
+    return `<button class="notification-item" type="button" data-notification-message="${escapeHtml(conversation.user.username)}">
+      ${avatarMarkup(conversation.user, "avatar avatar--notification")}
+      <span><small>${unreadLabel}</small><b>@${escapeHtml(conversation.user.username)}</b><em translate="no">${escapeHtml(conversation.lastMessage)}</em></span>
+      <i class="notification-item-count">${conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</i>
+    </button>`;
+  }).join("");
+}
+
+function bindHeaderNotificationItems() {
+  root.querySelectorAll<HTMLButtonElement>("[data-notification-challenge]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const invitation = headerNotifications?.invitations.find(
+        (item) => item.id === button.dataset.notificationChallenge,
+      );
+      root.querySelector<HTMLElement>("[data-notification-panel]")?.setAttribute("hidden", "");
+      root.querySelector<HTMLButtonElement>("[data-notifications]")?.setAttribute("aria-expanded", "false");
+      if (invitation) showIncomingChallenge(invitation);
+    });
+  });
+  root.querySelectorAll<HTMLButtonElement>("[data-notification-message]").forEach((button) => {
+    button.addEventListener("click", () => {
+      requestedConversationUsername = button.dataset.notificationMessage || "";
+      navigate("/comunidad");
+    });
+  });
+}
+
+function updateHeaderNotifications() {
+  const count = headerNotificationCount();
+  root.querySelectorAll<HTMLElement>("[data-notification-count]").forEach((badge) => {
+    badge.hidden = count === 0;
+    badge.textContent = count > 99 ? "99+" : String(count);
+  });
+  const list = root.querySelector<HTMLElement>("[data-notification-list]");
+  if (list) list.innerHTML = headerNotificationListMarkup();
+  bindHeaderNotificationItems();
+  list?.querySelectorAll<HTMLButtonElement>("[data-refresh-notifications]").forEach((button) => {
+    button.addEventListener("click", () => void refreshHeaderNotifications(true).catch(() => {}));
+  });
+}
+
+async function refreshHeaderNotifications(force = false) {
+  if (!currentUser) throw new Error("Debes iniciar sesión.");
+  const userId = currentUser.id;
+  if (
+    !force
+    && headerNotifications?.userId === userId
+    && Date.now() - headerNotificationsUpdatedAt < 30_000
+  ) {
+    updateHeaderNotifications();
+    return headerNotifications;
+  }
+  if (headerNotificationsRequest) return headerNotificationsRequest;
+
+  headerNotificationsError = false;
+  updateHeaderNotifications();
+  const request = Promise.all([api.invitations(), api.conversations()])
+    .then(([invitationResponse, conversationResponse]) => {
+      const snapshot: HeaderNotificationSnapshot = {
+        userId,
+        invitations: invitationResponse.invitations.filter(
+          (invitation) => invitation.status === "pending" && invitation.direction === "received",
+        ),
+        conversations: conversationResponse.conversations,
+        unreadMessageCount: conversationResponse.unreadCount,
+      };
+      if (currentUser?.id === userId) {
+        headerNotifications = snapshot;
+        headerNotificationsUpdatedAt = Date.now();
+        updateHeaderNotifications();
+      }
+      return snapshot;
+    })
+    .catch((error) => {
+      if (currentUser?.id === userId) {
+        headerNotificationsError = true;
+        updateHeaderNotifications();
+      }
+      throw error;
+    })
+    .finally(() => {
+      if (headerNotificationsRequest === request) headerNotificationsRequest = null;
+    });
+  headerNotificationsRequest = request;
+  return request;
+}
+
+function bindHeaderNotifications(closeMenu: () => void) {
+  const center = root.querySelector<HTMLElement>(".notification-center");
+  const button = center?.querySelector<HTMLButtonElement>("[data-notifications]");
+  const panel = center?.querySelector<HTMLElement>("[data-notification-panel]");
+  if (!center || !button || !panel) return;
+  const setOpen = (open: boolean) => {
+    panel.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+    if (open) closeMenu();
+  };
+  button.addEventListener("click", () => setOpen(!panel.hidden));
+  panel.querySelector("[data-close-notifications]")?.addEventListener("click", () => setOpen(false));
+  panel.querySelector("header [data-refresh-notifications]")?.addEventListener("click", () => {
+    void refreshHeaderNotifications(true).catch(() => {});
+  });
+  root.querySelector(".app-shell")?.addEventListener("click", (event) => {
+    if (!panel.hidden && !center.contains(event.target as Node)) setOpen(false);
+  });
+  updateHeaderNotifications();
+  void refreshHeaderNotifications().catch(() => {});
 }
 
 function errorMessage(error: unknown) {
@@ -405,13 +580,21 @@ function bindNavigation() {
       setSessionHint(false);
       socket?.disconnect();
       socket = null;
+      resetHeaderNotifications();
       navigate("/inicio");
       toast("Sesión cerrada.");
     }
   });
-  root.querySelector<HTMLButtonElement>("[data-menu]")?.addEventListener("click", () => {
-    root.querySelector(".sidebar")?.classList.toggle("is-open");
-  });
+  const sidebar = root.querySelector<HTMLElement>(".sidebar");
+  const menuButton = root.querySelector<HTMLButtonElement>("[data-menu]");
+  const menuScrim = root.querySelector<HTMLButtonElement>("[data-menu-close]");
+  const setMenuOpen = (open: boolean) => {
+    sidebar?.classList.toggle("is-open", open);
+    menuButton?.setAttribute("aria-expanded", String(open));
+  };
+  menuButton?.addEventListener("click", () => setMenuOpen(!sidebar?.classList.contains("is-open")));
+  menuScrim?.addEventListener("click", () => setMenuOpen(false));
+  bindHeaderNotifications(() => setMenuOpen(false));
   bindProfilePhotoDialog();
   bindAccountDeletionDialog();
   bindLegalConsent();
@@ -544,9 +727,10 @@ function publicPageLayout(content: string) {
 function appLayout(content: string, active: "home" | "ranking" | "game" | "watch" | "community" | "tournaments" | "donate" | "premium" | "credits" | "legal" = "home") {
   if (!currentUser) return content;
   const avatar = avatarMarkup(currentUser, "avatar avatar--small");
+  const notificationCount = headerNotificationCount();
   return `
     <div class="app-shell">
-      <aside class="sidebar">
+      <aside class="sidebar" id="app-sidebar">
         <div class="sidebar-brand brand">${logoMarkup()}</div>
         <nav class="sidebar-nav" aria-label="Navegación de la cuenta">
           <button class="nav-item ${active === "home" ? "is-active" : ""}" data-route="/inicio">${icon("home")}<span>Inicio</span></button>
@@ -557,20 +741,40 @@ function appLayout(content: string, active: "home" | "ranking" | "game" | "watch
           <button class="nav-item ${active === "tournaments" ? "is-active" : ""}" data-route="/torneos">${icon("tournament")}<span>Torneos</span></button>
         </nav>
         <button class="nav-item sidebar-information-link ${active === "legal" ? "is-active" : ""}" type="button" data-route="/informacion"><i>i</i><span>Información</span></button>
-        <button class="sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="${isNativeAdsAvailable() ? "/apoyar" : "/donar"}">
-          <span class="sidebar-donate-icon">${icon("heart")}</span>
-          <span><small>APOYA EL PROYECTO</small><b>Apoyo</b></span>
+        <button class="sidebar-action sidebar-donate ${active === "donate" ? "is-active" : ""}" type="button" data-route="${isNativeAdsAvailable() ? "/apoyar" : "/donar"}">
+          <span class="sidebar-action-icon sidebar-donate-icon">${icon("heart")}</span>
+          <span class="sidebar-action-copy"><small>APOYA EL PROYECTO</small><b>Apoyo</b></span>
           <i aria-hidden="true">→</i>
         </button>
-        <button class="nav-item sidebar-ad-free ${active === "premium" ? "is-active" : ""}" type="button" data-route="/quitar-anuncios"><span>♢</span><span>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</span></button>
-        <button class="sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos"><span class="sidebar-credits-icon">©</span><span><b>Créditos</b><small>Autores y licencias</small></span><i aria-hidden="true">→</i></button>
+        <button class="sidebar-action sidebar-ad-free ${active === "premium" ? "is-active" : ""}" type="button" data-route="/quitar-anuncios">
+          <span class="sidebar-action-icon sidebar-ad-free-icon">♢</span>
+          <span class="sidebar-action-copy"><b>${premiumActive ? "Cuenta Premium" : "Quitar anuncios"}</b></span>
+          <i aria-hidden="true">→</i>
+        </button>
+        <button class="sidebar-action sidebar-credits ${active === "credits" ? "is-active" : ""}" type="button" data-route="/creditos">
+          <span class="sidebar-action-icon sidebar-credits-icon">©</span>
+          <span class="sidebar-action-copy"><b>Créditos</b><small>Autores y licencias</small></span>
+          <i aria-hidden="true">→</i>
+        </button>
         <button class="nav-item nav-item--logout" data-logout>${icon("logout")}<span>Cerrar sesión</span></button>
       </aside>
+      <button class="sidebar-scrim" type="button" data-menu-close aria-label="Cerrar menú" tabindex="-1"></button>
       <div class="app-stage">
         <header class="app-header">
-          <button class="icon-button mobile-menu" type="button" data-menu aria-label="Abrir menú">${icon("menu")}</button>
+          <button class="icon-button mobile-menu" type="button" data-menu aria-label="Abrir menú" aria-controls="app-sidebar" aria-expanded="false">${icon("menu")}</button>
           <button class="mobile-brand brand brand--button" type="button" data-route="/inicio">${logoMarkup()}</button>
           ${languageSelectorMarkup("language-selector--app")}
+          <div class="notification-center">
+            <button class="header-notification-button" type="button" data-notifications aria-label="Abrir notificaciones" aria-haspopup="true" aria-expanded="false">
+              ${icon("bell")}
+              <span data-notification-count ${notificationCount ? "" : "hidden"}>${notificationCount > 99 ? "99+" : notificationCount}</span>
+            </button>
+            <section class="notification-panel" data-notification-panel hidden aria-label="Notificaciones">
+              <header><span><small>ACTIVIDAD RECIENTE</small><b>Notificaciones</b></span><button type="button" data-refresh-notifications aria-label="Actualizar notificaciones">${icon("refresh")}</button><button type="button" data-close-notifications aria-label="Cerrar notificaciones">×</button></header>
+              <div class="notification-list" data-notification-list aria-live="polite">${headerNotificationListMarkup()}</div>
+              <button class="notification-footer" type="button" data-route="/comunidad">Ver actividad en Comunidad <span aria-hidden="true">→</span></button>
+            </section>
+          </div>
           <button class="account-chip" type="button" data-player-profile-link="${escapeHtml(currentUser.username)}" aria-label="Ver tu perfil">
             <span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--small">${avatar}</span>
             <span class="account-copy"><span class="account-name-line"><b>${escapeHtml(currentUser.name)}</b>${worldTrophyMarkup(currentUser, "world-trophy--account")}</span><small>@${escapeHtml(currentUser.username)}${premiumActive ? " · Premium" : ""}</small></span>
@@ -1052,6 +1256,7 @@ function bindAuthDialog() {
               password: String(data.get("password")),
             });
         currentUser = response.user;
+        resetHeaderNotifications();
         applyPremiumStatus(Boolean(response.user.premium?.active), response.user.premium?.expiresAt || null, response.user.premium?.source || null);
         setSessionHint(true);
         dialog.close();
@@ -1092,6 +1297,17 @@ async function renderDashboard() {
     root.innerHTML = appLayout(errorState(errorMessage(error)));
     bindNavigation();
     bindRetry(() => renderDashboard());
+  }
+}
+
+function prefetchInitialRouteData(path: string) {
+  if (!currentUser) return;
+  if (path === "/jugar") {
+    void api.myRatings().catch(() => {});
+    return;
+  }
+  if (path === "/inicio") {
+    void Promise.allSettled([api.myRatings(), api.leaderboard("DO")]);
   }
 }
 
@@ -1304,6 +1520,43 @@ function showGameCompletionAd() {
       }
     })();
   }, 350);
+}
+
+function nativeRouteAllowsBanner(path = route()) {
+  const isPlayingBoard = /^\/leyenda\/[a-z]+\/(10|30|60)$/.test(path)
+    || /^\/partida\/\d+$/.test(path);
+  return Boolean(currentUser) && !premiumActive && !isPlayingBoard;
+}
+
+function syncNativeAdBannerForRoute() {
+  if (!isNativeAdsAvailable()) {
+    document.documentElement.classList.remove("ad-banner-active");
+    return Promise.resolve();
+  }
+
+  nativeAdBannerSyncQueue = nativeAdBannerSyncQueue
+    .catch(() => {})
+    .then(async () => {
+      if (!nativeRouteAllowsBanner()) {
+        await hideNativeAdBanner();
+        document.documentElement.classList.remove("ad-banner-active");
+        return;
+      }
+
+      const shown = await showNativeAdBanner();
+      if (!nativeRouteAllowsBanner()) {
+        await hideNativeAdBanner();
+        document.documentElement.classList.remove("ad-banner-active");
+        return;
+      }
+      document.documentElement.classList.toggle("ad-banner-active", shown);
+    })
+    .catch((error) => {
+      document.documentElement.classList.remove("ad-banner-active");
+      console.warn("El banner nativo no estuvo disponible.", error);
+    });
+
+  return nativeAdBannerSyncQueue;
 }
 
 async function loadPayPalSdk(clientId: string, currency: string) {
@@ -2095,6 +2348,17 @@ async function renderCommunity() {
       ),
       "community",
     );
+    if (currentUser) {
+      headerNotifications = {
+        userId: currentUser.id,
+        invitations: headerNotifications?.userId === currentUser.id
+          ? headerNotifications.invitations
+          : [],
+        conversations: conversationsResponse.conversations,
+        unreadMessageCount: conversationsResponse.unreadCount,
+      };
+      headerNotificationsUpdatedAt = Date.now();
+    }
     bindNavigation();
     bindCommunity(
       friendsResponse,
@@ -2428,7 +2692,14 @@ function bindCommunity(
     if (!dialog.open) dialog.showModal();
     await refreshConversation();
     void refreshConversationList();
+    void refreshHeaderNotifications(true).catch(() => {});
   };
+
+  if (requestedConversationUsername) {
+    const username = requestedConversationUsername;
+    requestedConversationUsername = "";
+    window.setTimeout(() => void openConversation(username), 0);
+  }
 
   const receiveDirectMessage = (message: DirectMessage & {
     sender?: { username?: string };
@@ -3689,9 +3960,15 @@ async function checkIncomingChallenges() {
   ) return;
   incomingChallengeCheckRunning = true;
   try {
-    const invitation = (await api.invitations()).invitations.find(
+    const invitations = (await api.invitations()).invitations.filter(
       (item) => item.status === "pending" && item.direction === "received",
     );
+    const invitation = invitations[0];
+    if (headerNotifications?.userId === currentUser.id) {
+      headerNotifications.invitations = invitations;
+      headerNotificationsUpdatedAt = Date.now();
+      updateHeaderNotifications();
+    }
     if (invitation) showIncomingChallenge(invitation);
     else if (incomingChallengeDialog) closeIncomingChallengeDialog();
   } catch {
@@ -5485,7 +5762,13 @@ async function connectRealtime() {
     navigate(`/partida/${game.id}`);
   });
   socket.on("invitation:updated", () => {
+    headerNotificationsUpdatedAt = 0;
+    void refreshHeaderNotifications(true).catch(() => {});
     void checkIncomingChallenges();
+  });
+  socket.on("message:received", () => {
+    headerNotificationsUpdatedAt = 0;
+    void refreshHeaderNotifications(true).catch(() => {});
   });
   socket.on("connect_error", (error) => {
     console.warn("La conexión en vivo no está disponible; se usará una actualización alternativa.", error.message);
@@ -5499,6 +5782,11 @@ function scheduleBackgroundServices(user: User, delay = 0) {
       void connectRealtime().catch((error) => {
         console.warn("La conexión en vivo se completará en segundo plano.", error);
       });
+      const refreshTimer = window.setInterval(() => {
+        if (currentUser?.id !== user.id || document.visibilityState !== "visible") return;
+        void refreshHeaderNotifications(true).catch(() => {});
+      }, 60_000);
+      window.addEventListener("pagehide", () => window.clearInterval(refreshTimer), { once: true });
       void initializeNativeStoreForUser(user);
     }, delay);
   });
@@ -5525,15 +5813,11 @@ async function renderRoute() {
   if (path === "/como-jugar") return renderHowToPlay();
   if (isLegalPath(path)) return renderLegalPage(path);
   if (!currentUser) {
-    void hideNativeAdBanner();
+    void syncNativeAdBannerForRoute();
     renderLanding();
     return;
   }
-  const isPlayingBoard = /^\/leyenda\/[a-z]+\/(10|30|60)$/.test(path) || /^\/partida\/\d+$/.test(path);
-  if (isNativeAdsAvailable()) {
-    void (isPlayingBoard ? hideNativeAdBanner() : showNativeAdBanner());
-    document.documentElement.classList.toggle("ad-banner-active", !isPlayingBoard);
-  }
+  void syncNativeAdBannerForRoute();
   const profileMatch = path.match(/^\/perfil\/([a-z0-9_]{3,24})$/i);
   if (profileMatch?.[1]) return renderPlayerProfile(profileMatch[1].toLowerCase());
   if (path === "/clasificacion") return renderLeaderboard();
@@ -5626,6 +5910,7 @@ async function handleAppLanguageChange(event: Event) {
 export async function startApp(user: User | null) {
   if (user?.language) useUserLanguage(user.language);
   currentUser = user;
+  if (!user || headerNotifications?.userId !== user.id) resetHeaderNotifications();
   applyPremiumStatus(Boolean(user?.premium?.active), user?.premium?.expiresAt || null, user?.premium?.source || null);
   bindPlayerProfileNavigation();
   if (!routeListenerBound) {
@@ -5638,28 +5923,36 @@ export async function startApp(user: User | null) {
     });
     languageListenerBound = true;
   }
+  let activeGameRequest: Promise<Game | null> | null = null;
   if (currentUser) {
     setSessionHint(true);
     const currentPath = route();
-    const activeGameRequest = /^\/partida\/\d+$/.test(currentPath)
-      ? Promise.resolve(null)
-      : api.activeGame()
+    prefetchInitialRouteData(currentPath);
+    if (!/^\/partida\/\d+$/.test(currentPath)) {
+      activeGameRequest = api.activeGame()
         .then((response) => response.game)
         .catch((error) => {
           console.warn("No se pudo comprobar la partida activa.", error);
           return null;
         });
-    const activeGame = await activeGameRequest;
-    if (activeGame?.status === "active") {
+    }
+  }
+  await renderRoute();
+  // La pantalla solicitada se pinta antes de esperar esta comprobación. Así
+  // evitamos una pantalla vacía y mantenemos intacta la recuperación de juego.
+  if (activeGameRequest) {
+    void activeGameRequest.then((activeGame) => {
+      if (!currentUser || activeGame?.status !== "active") return;
       const activePath = `/partida/${activeGame.id}`;
+      if (route() === activePath) return;
       history.replaceState(
         history.state,
         "",
         `${location.pathname}${location.search}#${activePath}`,
       );
-    }
+      void renderRoute();
+    });
   }
-  await renderRoute();
   if (currentUser) {
     scheduleBackgroundServices(currentUser);
     void checkIncomingChallenges();

@@ -42,7 +42,7 @@ export function avatarMarkup(user: { name: string; avatarUrl?: string | null }, 
     : `<span class="${className} avatar--fallback" aria-hidden="true">${escapeHtml(initials(user.name))}</span>`;
 }
 
-export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logout" | "chat" | "clock" | "menu" | "link" | "copy" | "share" | "settings" | "volume" | "refresh" | "camera" | "heart" | "users" | "search" | "userPlus" | "send" | "tournament") => {
+export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logout" | "chat" | "clock" | "menu" | "link" | "copy" | "share" | "settings" | "volume" | "refresh" | "camera" | "heart" | "users" | "search" | "userPlus" | "send" | "tournament" | "bell") => {
   const paths = {
     crown: '<path d="m4 8 4 4 4-7 4 7 4-4-2 10H6L4 8Z"/><path d="M6 21h12"/>',
     home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/>',
@@ -66,6 +66,7 @@ export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logo
     userPlus: '<path d="M15 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8" cy="7" r="4"/><path d="M19 8v6M16 11h6"/>',
     send: '<path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/>',
     tournament: '<circle cx="12" cy="9" r="6"/><path d="m8.5 14-2 8 5.5-3 5.5 3-2-8"/><path d="M12 6v6M9 9h6"/>',
+    bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9"/><path d="M10 21h4"/>',
   };
   return `<svg class="icon" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`;
 };

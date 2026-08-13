@@ -334,9 +334,10 @@ export const api = {
       `/ratings/players/${encodeURIComponent(username)}/history?offset=${offset}`,
     ),
   myRatings: () =>
-    request<{ system: string; initialRating: number; ratings: Rating[] }>(
-      "/ratings/me",
-    ),
+    cachedRequest("ratings:me", 2_500, () =>
+      request<{ system: string; initialRating: number; ratings: Rating[] }>(
+        "/ratings/me",
+      )),
   leaderboard: (scope: "DO" | "WORLD", offset = 0) =>
     cachedRequest(`leaderboard:${scope}:${offset}`, 15_000, () =>
       request<{

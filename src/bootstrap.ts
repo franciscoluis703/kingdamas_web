@@ -11,6 +11,25 @@ const SESSION_HINT_KEY = "kingdamas_session_hint";
 let launchPromise: Promise<void> | null = null;
 let appModulePromise: Promise<typeof import("./main")> | null = null;
 
+function markRuntimePlatform() {
+  const capacitor = (window as Window & {
+    Capacitor?: {
+      getPlatform?: () => string;
+      isNativePlatform?: () => boolean;
+    };
+  }).Capacitor;
+  const platform = capacitor?.isNativePlatform?.()
+    ? capacitor.getPlatform?.()
+    : null;
+  const userAgentPlatform = /KingDamasAndroid\//.test(navigator.userAgent)
+    ? "android"
+    : null;
+  const nativePlatform = platform || userAgentPlatform;
+  if (nativePlatform === "android" || nativePlatform === "ios") {
+    document.documentElement.dataset.nativePlatform = nativePlatform;
+  }
+}
+
 function loadAppModule() {
   return (appModulePromise ??= import("./main"));
 }
@@ -67,5 +86,6 @@ async function bootstrap() {
   }
 }
 
+markRuntimePlatform();
 initializeI18n();
 void bootstrap();
