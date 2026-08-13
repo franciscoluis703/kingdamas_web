@@ -134,6 +134,7 @@ let selectedTime: TimeControl = 10;
 let linkInvitationTimer: number | null = null;
 let currentRating: Rating | null = null;
 let paypalSdkPromise: Promise<PayPalNamespace> | null = null;
+let paypalWarmupUserId: string | null = null;
 let socketIoPromise: Promise<typeof import("socket.io-client")> | null = null;
 let outgoingChallengeDialog: HTMLDialogElement | null = null;
 let outgoingChallengeTimer: number | null = null;
@@ -588,6 +589,12 @@ function bindNavigation() {
   syncWebAdBanner(route(), premiumActive);
   root.querySelectorAll<HTMLElement>("[data-route]").forEach((element) => {
     element.addEventListener("click", () => navigate(element.dataset.route || "/inicio"));
+  });
+  root.querySelectorAll<HTMLElement>('[data-route="/donar"], [data-route="/quitar-anuncios"]').forEach((element) => {
+    const prioritizePayPal = () => { void warmWebPayments(); };
+    element.addEventListener("pointerenter", prioritizePayPal, { once: true });
+    element.addEventListener("pointerdown", prioritizePayPal, { once: true });
+    element.addEventListener("focus", prioritizePayPal, { once: true });
   });
   root.querySelector<HTMLButtonElement>("[data-logout]")?.addEventListener("click", async () => {
     if (!(await requestPageLeave())) return;
@@ -1596,15 +1603,67 @@ async function loadPayPalSdk(clientId: string, currency: string) {
     script.dataset.paypalSdk = "true";
     script.addEventListener("load", () => {
       if (window.paypal) resolve(window.paypal);
-      else reject(new Error("PayPal no pudo iniciar."));
+      else {
+        paypalSdkPromise = null;
+        script.remove();
+        reject(new Error("PayPal no pudo iniciar."));
+      }
     });
     script.addEventListener("error", () => {
       paypalSdkPromise = null;
+      script.remove();
       reject(new Error("No pudimos conectar con PayPal."));
     });
     document.head.append(script);
   });
   return paypalSdkPromise;
+}
+
+function ensurePayPalConnectionHints() {
+  for (const origin of ["https://www.paypal.com", "https://www.paypalobjects.com"]) {
+    if (document.head.querySelector(`link[rel="preconnect"][href="${origin}"]`)) continue;
+    const link = document.createElement("link");
+    link.rel = "preconnect";
+    link.href = origin;
+    link.crossOrigin = "anonymous";
+    link.dataset.paypalHint = "true";
+    document.head.append(link);
+  }
+}
+
+async function warmWebPayments() {
+  if (!currentUser || isNativeAdsAvailable()) return;
+  ensurePayPalConnectionHints();
+  try {
+    const config = await api.donationConfig();
+    if (config.enabled && config.clientId) {
+      await loadPayPalSdk(config.clientId, config.currency);
+    }
+  } catch (error) {
+    // La pantalla de pago conserva su manejo de errores y puede reintentar.
+    console.warn("PayPal se cargará cuando abras la pantalla de pago.", error);
+  }
+}
+
+function schedulePayPalWarmup(user: User) {
+  if (isNativeAdsAvailable() || paypalWarmupUserId === user.id) return;
+  paypalWarmupUserId = user.id;
+  ensurePayPalConnectionHints();
+  const start = () => {
+    if (currentUser?.id !== user.id) return;
+    void warmWebPayments();
+  };
+  const idleWindow = window as Window & {
+    requestIdleCallback?: (
+      callback: () => void,
+      options?: { timeout: number },
+    ) => number;
+  };
+  if (idleWindow.requestIdleCallback) {
+    idleWindow.requestIdleCallback(start, { timeout: 3_000 });
+  } else {
+    window.setTimeout(start, 1_500);
+  }
 }
 
 function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) {
@@ -2201,7 +2260,7 @@ function legalAgeSafetyMarkup() {
 function legalCookiesMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. Las aplicaciones iOS y Android pueden utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>PayPal interviene cuando visitas las secciones de apoyo, Premium o inscripción del sitio web y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
+    <section><h2>Servicios externos</h2><p>En la web, PayPal puede cargarse en segundo plano después de iniciar sesión para que sus botones estén listos cuando abras las secciones de apoyo, Premium o inscripción, y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -5821,6 +5880,7 @@ async function connectRealtime() {
 }
 
 function scheduleBackgroundServices(user: User, delay = 0) {
+  schedulePayPalWarmup(user);
   window.requestAnimationFrame(() => {
     window.setTimeout(() => {
       if (currentUser?.id !== user.id) return;

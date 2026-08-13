@@ -181,7 +181,9 @@ export const api = {
       method: "PATCH",
       body: json({ language }),
     }),
-  donationConfig: () => request<DonationConfig>("/donations/config"),
+  donationConfig: () =>
+    cachedRequest("donations:config", 5 * 60_000, () =>
+      request<DonationConfig>("/donations/config")),
   appStoreConfig: () => request<AppStoreConfig>("/app-store/config"),
   confirmAppStoreTransaction: (signedTransactionInfo: string) =>
     request<AppStoreConfirmation>("/app-store/transactions/confirm", {
