@@ -79,6 +79,7 @@ const english = new Map<string, string>([
   ["Espectadores conectados", "Connected spectators"],
   ["Emojis desafiantes", "Challenge emojis"],
   ["Abrir chat", "Open chat"],
+  ["Enviar mensaje", "Send message"],
   ["Abrir configuración", "Open settings"],
   ["Cerrar configuración", "Close settings"],
   ["Colores de fichas", "Piece colors"],

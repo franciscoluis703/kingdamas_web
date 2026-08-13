@@ -2976,6 +2976,7 @@ function playerProfilePageMarkup(
       ${profile.isSelf
         ? `<button class="button button--quiet" type="button" data-open-profile-photo>${icon("camera")} Cambiar foto</button>`
         : `<div class="player-profile-actions">
+            <button class="button button--outline" type="button" data-message-profile="${escapeHtml(profile.username)}">${icon("chat")} Enviar mensaje</button>
             <button class="button button--primary" type="button" data-challenge-profile="${escapeHtml(profile.username)}">${icon("play")} Desafiar a @${escapeHtml(profile.username)}</button>
             ${profile.isFollowing
               ? `<button class="button button--quiet player-profile-unfollow" type="button" data-unfollow-profile="${escapeHtml(profile.username)}">✓ Dejar de seguir</button>`
@@ -3028,6 +3029,10 @@ async function renderPlayerProfile(username: string) {
     bindNavigation();
     root.querySelector<HTMLButtonElement>("[data-challenge-profile]")?.addEventListener("click", () => {
       openProfileChallenge(response.profile);
+    });
+    root.querySelector<HTMLButtonElement>("[data-message-profile]")?.addEventListener("click", () => {
+      requestedConversationUsername = response.profile.username;
+      navigate("/comunidad");
     });
     const historyButton = root.querySelector<HTMLButtonElement>("[data-view-player-history]");
     const historyCount = root.querySelector<HTMLElement>("[data-player-history-count]");
