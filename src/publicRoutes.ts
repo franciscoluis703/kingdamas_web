@@ -4,6 +4,7 @@ export const PUBLIC_CONTENT_PATHS = [
   "/como-jugar",
   "/acerca-de",
   "/contacto",
+  "/seguridad-y-edad",
   "/politica-de-cookies",
   "/terminos-y-condiciones",
   "/politica-de-privacidad",
@@ -55,6 +56,16 @@ const pageMetadata: Record<"/" | PublicContentPath, Record<AppLanguage, PageMeta
     en: {
       title: "Contact and Support | King Damas",
       description: "Contact King Damas for help with your account, matches, privacy or community conduct.",
+    },
+  },
+  "/seguridad-y-edad": {
+    es: {
+      title: "Seguridad y edad recomendada (13+) | King Damas",
+      description: "Consulta la edad recomendada, las funciones sociales, el chat, la publicidad, las compras y las pautas de seguridad de King Damas.",
+    },
+    en: {
+      title: "Safety and Age Suitability (13+) | King Damas",
+      description: "Review King Damas age suitability, social features, chat, advertising, purchases, and safety guidance.",
     },
   },
   "/politica-de-cookies": {

@@ -89,6 +89,7 @@ describe("proxy de Cloudflare", () => {
     expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');
     expect(sitemap).toContain("<loc>https://kingdamas.com/</loc>");
     expect(sitemap).toContain("<loc>https://kingdamas.com/como-jugar</loc>");
+    expect(sitemap).toContain("<loc>https://kingdamas.com/seguridad-y-edad</loc>");
     expect(sitemap).toContain("<loc>https://kingdamas.com/politica-de-privacidad</loc>");
     expect(sitemap).not.toContain("#");
   });
@@ -106,6 +107,19 @@ describe("proxy de Cloudflare", () => {
     expect(html).toContain('type="application/ld+json"');
     expect(html).toContain("Capturas obligatorias");
     expect(response.headers.get("x-robots-tag")).toBe("index, follow");
+  });
+
+  it("publica la página de seguridad y edad con clasificación 13+", async () => {
+    const response = await withSeoPage(
+      new Response('<html><head><!-- SEO_META_START --><!-- SEO_META_END --></head><body><div id="app"><!-- SEO_FALLBACK_START --><!-- SEO_FALLBACK_END --></div></body></html>', {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+      "/seguridad-y-edad",
+    );
+    const html = await response.text();
+    expect(html).toContain("Seguridad y edad recomendada: 13+");
+    expect(html).toContain('href="mailto:admin@kingdamas.com"');
+    expect(html).toContain('<link rel="canonical" href="https://kingdamas.com/seguridad-y-edad"');
   });
 
   it("presenta la portada como una comunidad internacional y declara el logo oficial", async () => {

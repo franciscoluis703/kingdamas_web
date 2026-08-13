@@ -36,6 +36,13 @@ const SEO_PAGES = {
     body: `<p>Escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a> para recibir ayuda con tu cuenta, partidas, privacidad o convivencia.</p><section><h2>Seguridad</h2><p>No envíes contraseñas, datos bancarios ni códigos de acceso por correo.</p></section>`,
     lastmod: "2026-08-09",
   },
+  "/seguridad-y-edad": {
+    title: "Seguridad y edad recomendada (13+) | King Damas",
+    description: "Consulta la edad recomendada, las funciones sociales, el chat, la publicidad, las compras y las pautas de seguridad de King Damas.",
+    heading: "Seguridad y edad recomendada: 13+",
+    body: `<p>King Damas está clasificado 13+ por sus funciones sociales, la comunicación entre jugadores y las competiciones.</p><section><h2>Funciones sociales y comunicación</h2><p>Los usuarios pueden crear perfiles, descubrir y seguir jugadores, enviar mensajes privados y usar el chat de las partidas.</p></section><section><h2>Supervisión y contenido</h2><p>King Damas no incorpora verificación técnica de edad ni controles parentales propios. El juego oficial no contiene violencia, sexualidad, apuestas, cajas de recompensas, alcohol, drogas ni terror.</p></section><section><h2>Contacto de seguridad</h2><p>Para consultas de familias o reportes de seguridad, escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a>.</p></section>`,
+    lastmod: "2026-08-13",
+  },
   "/politica-de-cookies": {
     title: "Política de cookies | King Damas",
     description: "Consulta qué almacenamiento esencial utiliza King Damas para mantener tu sesión y recordar tus preferencias de juego.",
@@ -135,7 +142,7 @@ function seoMetadata(path, page) {
 }
 
 function seoSnapshot(page) {
-  return `<!-- SEO_FALLBACK_START --><div class="landing seo-fallback"><header class="public-header container"><a class="brand" href="/">King Damas</a><nav class="public-nav"><a href="/como-jugar">Cómo jugar</a><a href="/acerca-de">Acerca de</a></nav></header><main class="public-information-page container"><article><h1>${page.heading}</h1>${page.body}</article></main><footer class="public-footer container"><a href="/">King Damas</a><nav><a href="/contacto">Contacto</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer></div><!-- SEO_FALLBACK_END -->`;
+  return `<!-- SEO_FALLBACK_START --><div class="landing seo-fallback"><header class="public-header container"><a class="brand" href="/">King Damas</a><nav class="public-nav"><a href="/como-jugar">Cómo jugar</a><a href="/acerca-de">Acerca de</a></nav></header><main class="public-information-page container"><article><h1>${page.heading}</h1>${page.body}</article></main><footer class="public-footer container"><a href="/">King Damas</a><nav><a href="/contacto">Contacto</a><a href="/seguridad-y-edad">Seguridad y edad</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer></div><!-- SEO_FALLBACK_END -->`;
 }
 
 function replaceMetadata(html, metadata) {

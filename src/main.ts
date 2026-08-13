@@ -166,6 +166,7 @@ const SESSION_HINT_KEY = "kingdamas_session_hint";
 const LEGAL_ROUTES = [
   { path: "/acerca-de", label: "Acerca de", shortLabel: "Acerca de" },
   { path: "/contacto", label: "Contacto", shortLabel: "Contacto" },
+  { path: "/seguridad-y-edad", label: "Seguridad y edad", shortLabel: "Seguridad" },
   { path: "/politica-de-cookies", label: "Política de cookies", shortLabel: "Cookies" },
   { path: "/terminos-y-condiciones", label: "Términos y condiciones", shortLabel: "Términos" },
   { path: "/politica-de-privacidad", label: "Política de privacidad", shortLabel: "Privacidad" },
@@ -736,7 +737,7 @@ function publicHeader() {
 }
 
 function publicFooterMarkup() {
-  return `<footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><nav aria-label="Información legal"><a href="/acerca-de">Acerca de</a><a href="/contacto">Contacto</a><a href="/politica-de-cookies">Cookies</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer>`;
+  return `<footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><nav aria-label="Información legal"><a href="/acerca-de">Acerca de</a><a href="/contacto">Contacto</a><a href="/seguridad-y-edad">Seguridad y edad</a><a href="/politica-de-cookies">Cookies</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer>`;
 }
 
 function publicPageLayout(content: string) {
@@ -2116,6 +2117,7 @@ function renderInformationHub() {
   const descriptions: Record<LegalPath, string> = {
     "/acerca-de": "Conoce el propósito y los principios de King Damas.",
     "/contacto": "Encuentra ayuda para tu cuenta, privacidad o convivencia.",
+    "/seguridad-y-edad": "Consulta la clasificación 13+ y las pautas para jugar con seguridad.",
     "/politica-de-cookies": "Consulta qué se guarda en tu navegador y para qué se utiliza.",
     "/terminos-y-condiciones": "Revisa las reglas de uso, juego limpio y participación.",
     "/politica-de-privacidad": "Descubre cómo usamos y protegemos tus datos personales.",
@@ -2185,6 +2187,17 @@ function legalContactMarkup() {
     <aside class="legal-note"><b>Seguridad de pagos</b><p>Las donaciones y pagos habilitados se procesan mediante proveedores externos. King Damas nunca te pedirá por correo la contraseña de tu cuenta ni los datos completos de una tarjeta.</p></aside>`;
 }
 
+function legalAgeSafetyMarkup() {
+  return `<aside class="legal-note legal-note--green"><b>Edad recomendada: 13 años o más</b><p>King Damas está clasificado 13+ por sus funciones sociales, la comunicación entre jugadores y las competiciones. La estrategia del juego de damas no contiene violencia, sexualidad, apuestas ni otros temas para adultos.</p></aside>
+    <section><h2>Experiencia y funciones sociales</h2><p>Los usuarios pueden crear un perfil con nombre, usuario, país y fotografía; descubrir y seguir a otros jugadores; participar en clasificaciones y torneos; enviar mensajes privados y usar el chat de las partidas. El texto y las imágenes aportados por usuarios pueden variar y no representan contenido editorial de King Damas.</p></section>
+    <section><h2>Menores de edad y supervisión</h2><p>King Damas no incorpora actualmente verificación técnica de edad ni controles parentales propios. Si una persona menor de edad utiliza la plataforma, debe hacerlo con autorización y supervisión de su padre, madre o tutor legal. Los responsables pueden utilizar los controles de compras, contenido y tiempo de uso disponibles en el dispositivo.</p></section>
+    <section><h2>Comunicación segura</h2><p>No compartas contraseñas, códigos de acceso, dirección, teléfono, ubicación, información bancaria ni otros datos sensibles por el chat o los mensajes. Si recibes contenido ofensivo, amenazas, solicitudes inapropiadas o detectas suplantación, conserva los detalles necesarios y comunícalo a <a href="mailto:admin@kingdamas.com?subject=Reporte%20de%20seguridad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
+    <section><h2>Competición sin apuestas</h2><p>Las damas internacionales son un juego de habilidad. King Damas incluye partidas clasificadas, Elo Damas, torneos y objetivos competitivos, pero no ofrece apuestas, apuestas simuladas, cajas de recompensas ni monedas intercambiables por dinero real. Las condiciones y posibles premios de cada torneo se publican en su ficha.</p></section>
+    <section><h2>Publicidad y compras</h2><p>Las cuentas gratuitas pueden ver publicidad. Las compras opcionales permiten apoyar el proyecto, inscribirse en actividades habilitadas o activar periodos Premium sin anuncios. En iOS y Android se utilizan los sistemas de compra de App Store y Google Play; en la web se utiliza el proveedor indicado antes de confirmar el pago. Las compras no conceden ventajas sobre el tablero.</p></section>
+    <section><h2>Contenido oficial</h2><div class="legal-feature-grid"><span><b>Sin contenido sexual</b><small>No hay desnudez ni temas sexuales o sugestivos en el contenido oficial.</small></span><span><b>Sin violencia ni armas</b><small>Capturar una ficha es una mecánica abstracta del tablero, sin daño físico representado.</small></span><span><b>Sin alcohol ni drogas</b><small>El juego no incluye referencias a alcohol, tabaco, drogas, terror o tratamientos médicos.</small></span></div></section>
+    <section><h2>Contacto para familias y seguridad</h2><p>Para consultas sobre edad idónea, seguridad, privacidad o convivencia, escribe a <a href="mailto:admin@kingdamas.com?subject=Seguridad%20y%20edad%20King%20Damas">admin@kingdamas.com</a>. Incluye el nombre de usuario y la fecha aproximada del incidente cuando corresponda, pero nunca envíes contraseñas ni datos bancarios.</p></section>`;
+}
+
 function legalCookiesMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. Las aplicaciones iOS y Android pueden utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
@@ -2219,6 +2232,7 @@ function legalPageMarkup(path: LegalPath) {
   const pages: Record<LegalPath, { title: string; eyebrow: string; description: string; body: () => string }> = {
     "/acerca-de": { title: "Acerca de", eyebrow: "CONOCE KING DAMAS", description: "El propósito y los principios detrás de cada mesa.", body: legalAboutMarkup },
     "/contacto": { title: "Contacto", eyebrow: "ESTAMOS PARA AYUDAR", description: "Un canal claro para soporte, privacidad y asuntos de la comunidad.", body: legalContactMarkup },
+    "/seguridad-y-edad": { title: "Seguridad y edad", eyebrow: "EXPERIENCIA IDÓNEA 13+", description: "Información para jugadores, familias y responsables sobre las funciones y el contenido de King Damas.", body: legalAgeSafetyMarkup },
     "/politica-de-cookies": { title: "Política de cookies", eyebrow: "CONTROL Y TRANSPARENCIA", description: "Qué guarda King Damas en tu navegador y para qué se utiliza.", body: legalCookiesMarkup },
     "/terminos-y-condiciones": { title: "Términos y condiciones", eyebrow: "REGLAS DE LA PLATAFORMA", description: "Las condiciones para usar King Damas y compartir una mesa justa.", body: legalTermsMarkup },
     "/politica-de-privacidad": { title: "Política de privacidad", eyebrow: "TUS DATOS, CON CLARIDAD", description: "Cómo recopilamos, utilizamos y protegemos tu información.", body: legalPrivacyMarkup },

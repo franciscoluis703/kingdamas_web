@@ -30,7 +30,7 @@ function publicHeader() {
 }
 
 function publicFooterMarkup() {
-  return `<footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><nav aria-label="Información legal"><a href="/acerca-de">Acerca de</a><a href="/contacto">Contacto</a><a href="/politica-de-cookies">Cookies</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer>`;
+  return `<footer class="public-footer container"><span>© ${new Date().getFullYear()} King Damas</span><nav aria-label="Información legal"><a href="/acerca-de">Acerca de</a><a href="/contacto">Contacto</a><a href="/seguridad-y-edad">Seguridad y edad</a><a href="/politica-de-cookies">Cookies</a><a href="/terminos-y-condiciones">Términos</a><a href="/politica-de-privacidad">Privacidad</a></nav></footer>`;
 }
 
 function authDialogMarkup() {
