@@ -4,14 +4,14 @@ const ONE_YEAR_SECONDS = 31_536_000;
 const ONE_WEEK_SECONDS = 604_800;
 const ONE_MONTH_SECONDS = 2_592_000;
 const INVITATION_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32}$/;
-const SEO_IMAGE_URL = `${CANONICAL_ORIGIN}/brand/king-damas-logo.png?v=piece-1`;
+const SEO_IMAGE_URL = `${CANONICAL_ORIGIN}/brand/king-damas-logo.png`;
 const SEO_PAGES = {
   "/": {
-    title: "Jugar Damas Internacionales 10×10 Online | King Damas",
-    description: "Juega damas internacionales 10×10 online gratis, reta amigos, compite por Elo y entrena en Camino de Leyendas desde República Dominicana.",
-    heading: "Damas internacionales 10×10 online",
-    body: `<p>Juega gratis en tiempo real, reta a tus amigos, compite por Elo Damas y entrena en el Camino de Leyendas.</p><section><h2>Juega damas online desde cualquier lugar</h2><p>King Damas reúne partidas clasificadas, desafíos privados y entrenamiento progresivo en el tablero internacional de 10×10.</p></section><p><a href="/como-jugar">Aprende cómo jugar damas internacionales</a></p>`,
-    lastmod: "2026-08-11",
+    title: "Juega Damas Internacionales en Tablero 10×10 | King Damas",
+    description: "Compite en damas internacionales sobre un tablero 10×10, desafía jugadores de todo el mundo, mejora tu Elo y participa en partidas y torneos online.",
+    heading: "Damas internacionales en tablero 10×10",
+    body: `<p>Entra a una comunidad global de damas internacionales y disputa partidas en tiempo real sobre el tablero oficial de 10×10.</p><section><h2>Compite con jugadores de todo el mundo</h2><p>King Damas reúne partidas clasificadas, desafíos entre amigos, torneos y entrenamiento estratégico para todos los niveles.</p></section><section><h2>Domina cada movimiento del tablero</h2><p>Mejora tu Elo, practica capturas y coronaciones, y avanza en el Camino de Leyendas.</p></section><p><a href="/como-jugar">Aprende cómo jugar damas internacionales</a></p>`,
+    lastmod: "2026-08-13",
     schemaType: "application",
   },
   "/como-jugar": {
@@ -85,8 +85,9 @@ function structuredData(path, page) {
     return {
       "@context": "https://schema.org",
       "@graph": [
-        { "@type": "WebSite", "@id": `${CANONICAL_ORIGIN}/#website`, url, name: "King Damas", inLanguage: ["es", "en"] },
-        { "@type": ["VideoGame", "WebApplication"], "@id": `${CANONICAL_ORIGIN}/#application`, name: "King Damas", url, description: page.description, applicationCategory: "GameApplication", operatingSystem: "Web, iOS", inLanguage: ["es", "en"], image: SEO_IMAGE_URL, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" } },
+        { "@type": "Organization", "@id": `${CANONICAL_ORIGIN}/#organization`, name: "King Damas", alternateName: "KingDamas.com", url: `${CANONICAL_ORIGIN}/`, logo: { "@type": "ImageObject", url: SEO_IMAGE_URL, contentUrl: SEO_IMAGE_URL, width: 1254, height: 1254 }, image: SEO_IMAGE_URL, email: "admin@kingdamas.com" },
+        { "@type": "WebSite", "@id": `${CANONICAL_ORIGIN}/#website`, url, name: "King Damas", alternateName: "KingDamas.com", inLanguage: ["es", "en"], publisher: { "@id": `${CANONICAL_ORIGIN}/#organization` } },
+        { "@type": ["VideoGame", "WebApplication"], "@id": `${CANONICAL_ORIGIN}/#application`, name: "King Damas", url, description: page.description, applicationCategory: "GameApplication", operatingSystem: "Web, iOS, Android", inLanguage: ["es", "en"], image: SEO_IMAGE_URL, publisher: { "@id": `${CANONICAL_ORIGIN}/#organization` }, offers: { "@type": "Offer", price: "0", priceCurrency: "USD" } },
       ],
     };
   }
@@ -115,7 +116,8 @@ function seoMetadata(path, page) {
     <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <link rel="canonical" href="${url}" />
     <meta property="og:type" content="website" />
-    <meta property="og:locale" content="es_DO" />
+    <meta property="og:locale" content="es_ES" />
+    <meta property="og:locale:alternate" content="en_US" />
     <meta property="og:site_name" content="King Damas" />
     <meta property="og:title" content="${page.title}" />
     <meta property="og:description" content="${page.description}" />

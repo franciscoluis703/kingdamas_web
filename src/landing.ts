@@ -175,9 +175,9 @@ export function renderPublicLanding(
       <main>
         <section class="hero container">
           <div class="hero-copy">
-            <span class="eyebrow"><i></i>Damas internacionales · 10×10</span>
-            <h1>Piensa profundo.<br><em>Juega grande.</em></h1>
-            <p>Partidas competitivas en tiempo real, reglas claras y un Elo Damas que refleja cada decisión sobre el tablero.</p>
+            <span class="eyebrow"><i></i>Damas internacionales · tablero 10×10</span>
+            <h1>Domina el tablero.<br><em>Compite con el mundo.</em></h1>
+            <p>Juega damas internacionales en tiempo real, desafía jugadores de todo el mundo y mejora tu Elo en cada partida sobre el tablero 10×10.</p>
             <div class="hero-actions">
               <button class="button button--primary button--large" data-open-auth="register">Jugar gratis ${icon("play")}</button>
               <button class="button button--outline button--large" data-open-auth="login">Ya tengo cuenta</button>
@@ -203,7 +203,7 @@ export function renderPublicLanding(
           </div>
         </section>
         <section class="seo-content-section container" aria-labelledby="seo-home-title">
-          <div><span class="section-kicker">JUEGA · APRENDE · COMPARTE</span><h2 id="seo-home-title">Damas internacionales 10×10 online</h2><p>King Damas es un espacio gratuito para jugar desde República Dominicana o cualquier lugar del mundo. Elige partidas rápidas de 10 minutos o controles de 30 y 60 minutos para pensar cada movimiento.</p><a class="button button--outline" href="/como-jugar">Aprender cómo jugar</a></div>
+          <div><span class="section-kicker">JUEGA · APRENDE · COMPARTE</span><h2 id="seo-home-title">Damas internacionales en tablero 10×10</h2><p>King Damas conecta una comunidad global para jugar sobre el tablero internacional de 10×10. Disputa partidas rápidas o elige controles de 30 y 60 minutos para pensar cada movimiento.</p><a class="button button--outline" href="/como-jugar">Aprender cómo jugar</a></div>
           <div class="seo-home-features"><article><b>Buscar rival</b><p>Encuentra un oponente de nivel similar y compite por Elo Damas.</p></article><article><b>Desafiar a un amigo</b><p>Comparte un enlace privado y juega una partida 10×10 en tiempo real.</p></article><article><b>Camino de Leyendas</b><p>Entrena capturas, estrategia y finales sin modificar tu clasificación.</p></article></div>
         </section>
       </main>

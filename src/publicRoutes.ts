@@ -19,12 +19,12 @@ interface PageMetadata {
 const pageMetadata: Record<"/" | PublicContentPath, Record<AppLanguage, PageMetadata>> = {
   "/": {
     es: {
-      title: "Jugar Damas Internacionales 10×10 Online | King Damas",
-      description: "Juega damas internacionales 10×10 online gratis, reta amigos, compite por Elo y entrena en Camino de Leyendas desde República Dominicana.",
+      title: "Juega Damas Internacionales en Tablero 10×10 | King Damas",
+      description: "Compite en damas internacionales sobre un tablero 10×10, desafía jugadores de todo el mundo, mejora tu Elo y participa en partidas y torneos online.",
     },
     en: {
-      title: "Play 10×10 International Draughts Online | King Damas",
-      description: "Play 10×10 international draughts online for free, challenge friends, compete for Elo and train through the Road of Legends.",
+      title: "Play International Draughts on a 10×10 Board | King Damas",
+      description: "Play international draughts on a 10×10 board, challenge players worldwide, improve your Elo, and join online matches and tournaments.",
     },
   },
   "/como-jugar": {

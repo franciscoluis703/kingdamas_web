@@ -108,6 +108,22 @@ describe("proxy de Cloudflare", () => {
     expect(response.headers.get("x-robots-tag")).toBe("index, follow");
   });
 
+  it("presenta la portada como una comunidad internacional y declara el logo oficial", async () => {
+    const response = await withSeoPage(
+      new Response('<html><head><!-- SEO_META_START --><!-- SEO_META_END --></head><body><div id="app"><!-- SEO_FALLBACK_START --><!-- SEO_FALLBACK_END --></div></body></html>', {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+      "/",
+    );
+    const html = await response.text();
+    expect(html).toContain("Damas internacionales en tablero 10×10");
+    expect(html).toContain("jugadores de todo el mundo");
+    expect(html).toContain('"@type":"Organization"');
+    expect(html).toContain('"logo":{"@type":"ImageObject"');
+    expect(html).toContain("https://kingdamas.com/brand/king-damas-logo.png");
+    expect(html).not.toContain("República Dominicana");
+  });
+
   it("marca como no indexables las rutas privadas o desconocidas", async () => {
     const response = await withNoIndex(
       new Response("<html><head></head><body></body></html>", {
