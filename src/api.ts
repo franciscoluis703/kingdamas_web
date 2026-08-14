@@ -32,14 +32,6 @@ export interface AppStoreConfig {
   enabled: boolean;
   appAccountToken: string | null;
   products: {
-    tournamentEntry: {
-      productId: string;
-      qualifierYear: number;
-      referenceName?: string;
-      price?: number;
-      currency?: string;
-      type?: "consumable" | "auto_renewable_subscription";
-    };
     support: Array<{
       productId: string;
       tier: "small" | "medium" | "large" | "champion";
@@ -71,9 +63,8 @@ export interface DonationConfig {
 
 export interface AppStoreConfirmation {
   status: "COMPLETED";
-  purpose: "tournament_entry" | "support";
+  purpose: "support" | "premium";
   transactionId: string;
-  tournamentId: string | null;
 }
 
 export interface PremiumEntitlement {
@@ -304,14 +295,9 @@ export const api = {
     request<QualifierTournamentResponse>("/tournaments/qualifier"),
   worldChampionship: () =>
     request<WorldChampionshipResponse>("/tournaments/world-championship"),
-  createTournamentEntryOrder: (tournamentId: string) =>
-    request<{ id: string }>(
-      `/tournaments/${encodeURIComponent(tournamentId)}/entry/create-order`,
-      { method: "POST" },
-    ),
-  captureTournamentEntryOrder: (tournamentId: string, orderId: string) =>
-    request<{ status: string }>(
-      `/tournaments/${encodeURIComponent(tournamentId)}/entry/${encodeURIComponent(orderId)}/capture`,
+  registerForTournament: (tournamentId: string) =>
+    request<{ registered: true; tournamentId: string; countryCode?: string | null }>(
+      `/tournaments/${encodeURIComponent(tournamentId)}/entry`,
       { method: "POST" },
     ),
   tournamentParticipants: (tournamentId: string, offset = 0, query = "") =>

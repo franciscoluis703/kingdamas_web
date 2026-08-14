@@ -185,7 +185,6 @@ export interface Tournament {
   championshipYear: number | null;
   isQualifier: boolean;
   qualifierYear: number | null;
-  prizePool: { amount: number; currency: string } | null;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -202,7 +201,7 @@ export interface Tournament {
 export interface QualifierTournamentResponse {
   tournament: Tournament | null;
   registrationStartsAt?: string;
-  entryFee: { amount: string | number; currency: string };
+  premiumRequired: true;
   viewer: {
     registered: boolean;
     countryCode: string | null;

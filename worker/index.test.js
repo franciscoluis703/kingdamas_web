@@ -122,6 +122,21 @@ describe("proxy de Cloudflare", () => {
     expect(html).toContain('<link rel="canonical" href="https://kingdamas.com/seguridad-y-edad"');
   });
 
+  it("publica una política de privacidad accesible con opciones y eliminación", async () => {
+    const response = await withSeoPage(
+      new Response('<html><head><!-- SEO_META_START --><!-- SEO_META_END --></head><body><div id="app"><!-- SEO_FALLBACK_START --><!-- SEO_FALLBACK_END --></div></body></html>', {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      }),
+      "/politica-de-privacidad",
+    );
+    const html = await response.text();
+    expect(html).toContain("Política de privacidad");
+    expect(html).toContain('id="opciones-de-privacidad"');
+    expect(html).toContain('id="eliminar-cuenta"');
+    expect(html).toContain("admin@kingdamas.com");
+    expect(response.headers.get("x-robots-tag")).toBe("index, follow");
+  });
+
   it("presenta la portada como una comunidad internacional y declara el logo oficial", async () => {
     const response = await withSeoPage(
       new Response('<html><head><!-- SEO_META_START --><!-- SEO_META_END --></head><body><div id="app"><!-- SEO_FALLBACK_START --><!-- SEO_FALLBACK_END --></div></body></html>', {

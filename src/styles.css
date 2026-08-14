@@ -902,18 +902,9 @@ html[data-premium="true"] [data-ad-slot] { display: none !important; }
 .world-trophy--podium { width: 31px; height: 31px; background: transparent; }
 .world-trophy--podium img { width: 30px; height: 30px; }
 .avatar--world-holder { width: 38px; height: 38px; font-size: 9px; }
-.world-prizes { margin: 18px 0; padding: 15px; border-radius: 11px; background: rgba(0,0,0,.12); }
-.world-prizes > small { display: block; margin-bottom: 11px; color: #918d73; font-size: 11px; font-weight: 800; letter-spacing: .08em; text-align: center; }
-.world-prizes > div { display: grid; grid-template-columns: repeat(3,1fr); gap: 6px; }
-.world-prizes > div > span { padding: 8px 5px; display: grid; grid-template-columns: auto 1fr; align-items: center; column-gap: 6px; border: 1px solid var(--line); border-radius: 8px; }
-.world-prizes i { grid-row: span 2; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; font-size: 8px; font-style: normal; font-weight: 900; }
-.world-prizes b { color: #d8e1dc; font: 800 11px var(--font-display); }
-.world-prizes span small { color: #83958c; font-size: 10px; }
-.world-prizes .is-gold i { color: #271c06; background: #e8b85a; }
-.world-prizes .is-silver i { color: #1e2622; background: #bfc9c4; }
-.world-prizes .is-bronze i { color: #25160e; background: #b67d5b; }
-.world-prizes > p { margin: 12px 0 0; color: #91a299; font-size: 12px; line-height: 1.45; text-align: center; }
-.world-prizes > p b { color: var(--gold); }
+.world-recognition { margin: 18px 0; padding: 15px; border: 1px solid rgba(232,184,90,.14); border-radius: 11px; background: rgba(0,0,0,.12); text-align: center; }
+.world-recognition > small { display: block; margin-bottom: 7px; color: #bca46e; font-size: 11px; font-weight: 800; letter-spacing: .08em; }
+.world-recognition > p { margin: 0; color: #91a299; font-size: 12px; line-height: 1.5; }
 .tournament-entry-dialog { width: min(500px, calc(100% - 28px)); max-height: calc(100dvh - 28px); padding: 34px; color: #17221d; border: 0; border-radius: 22px; background: #f7f3e9; box-shadow: 0 35px 100px rgba(0,0,0,.62); text-align: center; overflow-y: auto; }
 .tournament-entry-dialog .dialog-close { color: #6b756f; }
 .tournament-entry-seal { width: 64px; height: 64px; margin: 0 auto 14px; display: grid; place-items: center; color: #1d270e; border-radius: 18px; background: linear-gradient(145deg,#f0cc79,#dba43e); box-shadow: 0 13px 30px rgba(174,124,31,.2); }
@@ -927,8 +918,8 @@ html[data-premium="true"] [data-ad-slot] { display: none !important; }
 .tournament-entry-summary small { color: #737f78; font-size: 11px; text-transform: uppercase; }
 .tournament-entry-summary b { margin-top: 4px; color: #20372d; font-size: 14px; }
 .tournament-entry-error { min-height: 20px; margin: 7px 0; color: #b63e31; font-size: 12px; }
-.tournament-paypal { min-height: 48px; display: grid; place-items: center; color: #728078; }
-.tournament-paypal > small { margin-top: -8px; font-size: 12px; }
+.tournament-entry-action { min-height: 48px; display: grid; place-items: center; gap: 10px; color: #728078; }
+.tournament-entry-action > small { margin-top: -8px; font-size: 12px; }
 .button--app-store { width: 100%; min-height: 49px; color: #fff; background: #111; box-shadow: 0 8px 22px rgba(0,0,0,.16); }
 .button--app-store:hover:not(:disabled) { background: #292929; }
 .tournament-official-rules { margin-top: 15px; padding: 13px 15px; color: #55645d; border: 1px solid #ddd9ce; border-radius: 11px; background: rgba(255,255,255,.45); text-align: left; }

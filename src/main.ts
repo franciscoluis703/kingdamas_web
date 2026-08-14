@@ -198,10 +198,6 @@ function applyPremiumStatus(
 const nativeStoreName = () => isAndroidNativeApp() ? "Google Play" : "App Store";
 
 const REQUIRED_NATIVE_STORE_CATALOG: AppStoreConfig["products"] = {
-  tournamentEntry: {
-    productId: "com.kingdamas.app.tournament.qualifier.2027",
-    qualifierYear: 2027,
-  },
   support: [
     { productId: "support.small", tier: "small" },
     { productId: "com.kingdamas.app.support.medium", tier: "medium" },
@@ -221,7 +217,6 @@ function completeNativeStoreConfig(config: AppStoreConfig): AppStoreConfig {
   return {
     ...config,
     products: {
-      tournamentEntry: config.products.tournamentEntry || REQUIRED_NATIVE_STORE_CATALOG.tournamentEntry,
       support: REQUIRED_NATIVE_STORE_CATALOG.support.map(
         (fallback) => supportByTier.get(fallback.tier) || fallback,
       ),
@@ -1717,14 +1712,14 @@ function webAdFreeMarkup(
   };
   return `
     <section class="page-heading donation-heading">
-      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Juega sin anuncios<br>en todas tus plataformas</h1><p>El plan se acredita a tu cuenta King Damas y se reconoce en web, iOS y Android.</p></div>
+      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Sin anuncios y con<br>acceso a torneos</h1><p>El plan se acredita a tu cuenta King Damas y se reconoce en web, iOS y Android.</p></div>
       <span class="donation-heart ios-premium-heading-icon">♢</span>
     </section>
     <div class="donation-layout">
       <section class="panel donation-card">
         <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
           <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
-          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Elige cuánto tiempo jugar sin anuncios"}</h2><p>${subscriptionActive ? "Tu cuenta ya es Premium; puedes añadir más tiempo al periodo vigente." : "El pago se procesa con PayPal y activa Premium durante el periodo elegido."}</p></div>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Tu cuenta Premium está activa" : "Elige tu plan Premium"}</h2><p>${subscriptionActive ? "Juegas sin anuncios y puedes inscribirte en los torneos oficiales abiertos." : "El pago se procesa con PayPal y activa Premium durante el periodo elegido."}</p></div>
           <div class="ios-ad-free-plans web-premium-plans">${config.products.adFree.map((product, index) => `<button class="button button--outline ios-ad-free-plan ios-ad-free-plan--${product.interval} ${index === 0 ? "is-selected" : ""}" type="button" aria-pressed="${index === 0}" data-web-product="${escapeHtml(product.productId)}"><small>${planLabels[product.interval]}</small><b>$${Number(product.price).toFixed(2)}</b></button>`).join("")}</div><div class="paypal-button-container web-premium-paypal" data-paypal-button><span class="loader loader--small"></span><small>Preparando pago seguro…</small></div>
           <p class="donation-error" data-donation-error aria-live="polite"></p>
           <small class="ios-subscription-terms">La compra web concede una semana, un mes o un año de Premium según el plan. Se acumula después de cualquier periodo Premium vigente. Consulta <a href="/terminos-y-condiciones">Términos</a> y <a href="/politica-de-privacidad">Privacidad</a>.</small>
@@ -1734,7 +1729,7 @@ function webAdFreeMarkup(
       <aside class="panel donation-purpose ios-premium-purpose">
         <img src="/brand/icon-192.png?v=piece-1" alt="" />
         <span class="section-kicker">UNA SOLA CUENTA</span><h2>Premium donde juegues</h2>
-        <ul><li><span>01</span><p><b>Sin anuncios</b><small>No verás banners ni anuncios al finalizar partidas.</small></p></li><li><span>02</span><p><b>iOS, Android y web</b><small>Inicia sesión con la misma cuenta King Damas.</small></p></li><li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo ni torneos.</small></p></li></ul>
+        <ul><li><span>01</span><p><b>Sin anuncios</b><small>No verás banners ni anuncios al finalizar partidas.</small></p></li><li><span>02</span><p><b>Acceso a torneos</b><small>Inscríbete sin cuota adicional mientras tu plan esté activo.</small></p></li><li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo, emparejamientos ni resultados.</small></p></li></ul>
       </aside>
     </div>`;
 }
@@ -1798,14 +1793,14 @@ function iosAdFreeMarkup(
   const plans = nativeStoreCatalog(config.products.adFree, products);
   return `
     <section class="page-heading donation-heading">
-      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Juega sin anuncios<br>en todas tus plataformas</h1><p>La suscripción pertenece a tu cuenta King Damas y se aplica en iOS, Android y web.</p></div>
+      <div><span class="eyebrow"><i></i>CUENTA PREMIUM</span><h1>Sin anuncios y con<br>acceso a torneos</h1><p>La suscripción pertenece a tu cuenta King Damas y se aplica en iOS, Android y web.</p></div>
       <span class="donation-heart ios-premium-heading-icon">♢</span>
     </section>
     <div class="donation-layout">
       <section class="panel donation-card">
         <section class="ios-ad-free-card ${subscriptionActive ? "is-active" : ""}">
           <span class="ios-ad-free-icon">${subscriptionActive ? "✓" : "♢"}</span>
-          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Disfrutas King Damas sin anuncios" : "Elige cuánto tiempo jugar sin anuncios"}</h2><p>${subscriptionActive ? "Tu cuenta King Damas es Premium en iOS, Android y web." : `Los planes son suscripciones renovables de ${storeName}. Puedes cambiar o cancelar tu plan desde tu cuenta de ${storeName}.`}</p></div>
+          <div><small class="section-kicker">CUENTA PREMIUM</small><h2>${subscriptionActive ? "Tu cuenta Premium está activa" : "Elige tu plan Premium"}</h2><p>${subscriptionActive ? "Juegas sin anuncios y puedes inscribirte en los torneos oficiales abiertos." : `Los planes son suscripciones renovables de ${storeName}. Puedes cambiar o cancelar tu plan desde tu cuenta de ${storeName}.`}</p></div>
           ${subscriptionActive
             ? `<button class="button button--quiet button--small" type="button" data-manage-ad-free>Administrar suscripción</button><button class="text-button" type="button" data-restore-ad-free>Restaurar compras</button>`
             : `<div class="ios-ad-free-plans">${plans.map(({ productId, interval, product }) => {
@@ -1822,8 +1817,8 @@ function iosAdFreeMarkup(
         <h2>Premium donde juegues</h2>
         <ul>
           <li><span>01</span><p><b>Sin anuncios</b><small>No verás anuncios al finalizar las partidas.</small></p></li>
-          <li><span>02</span><p><b>iOS, Android y web</b><small>Inicia sesión con la misma cuenta King Damas.</small></p></li>
-          <li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo ni torneos.</small></p></li>
+          <li><span>02</span><p><b>Acceso a torneos</b><small>Inscríbete sin cuota adicional mientras tu plan esté activo.</small></p></li>
+          <li><span>03</span><p><b>Sin ventaja competitiva</b><small>Premium no modifica partidas, Elo, emparejamientos ni resultados.</small></p></li>
         </ul>
         ${nativeAdPrivacyOptionsRequired ? `<button class="text-button ios-ad-privacy" type="button" data-ad-privacy-options>Opciones de privacidad de anuncios</button>` : ""}
       </aside>
@@ -2251,8 +2246,8 @@ function legalAgeSafetyMarkup() {
     <section><h2>Experiencia y funciones sociales</h2><p>Los usuarios pueden crear un perfil con nombre, usuario, país y fotografía; descubrir y seguir a otros jugadores; participar en clasificaciones y torneos; enviar mensajes privados y usar el chat de las partidas. El texto y las imágenes aportados por usuarios pueden variar y no representan contenido editorial de King Damas.</p></section>
     <section><h2>Menores de edad y supervisión</h2><p>King Damas no incorpora actualmente verificación técnica de edad ni controles parentales propios. Si una persona menor de edad utiliza la plataforma, debe hacerlo con autorización y supervisión de su padre, madre o tutor legal. Los responsables pueden utilizar los controles de compras, contenido y tiempo de uso disponibles en el dispositivo.</p></section>
     <section><h2>Comunicación segura</h2><p>No compartas contraseñas, códigos de acceso, dirección, teléfono, ubicación, información bancaria ni otros datos sensibles por el chat o los mensajes. Si recibes contenido ofensivo, amenazas, solicitudes inapropiadas o detectas suplantación, conserva los detalles necesarios y comunícalo a <a href="mailto:admin@kingdamas.com?subject=Reporte%20de%20seguridad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
-    <section><h2>Competición sin apuestas</h2><p>Las damas internacionales son un juego de habilidad. King Damas incluye partidas clasificadas, Elo Damas, torneos y objetivos competitivos, pero no ofrece apuestas, apuestas simuladas, cajas de recompensas ni monedas intercambiables por dinero real. Las condiciones y posibles premios de cada torneo se publican en su ficha.</p></section>
-    <section><h2>Publicidad y compras</h2><p>Las cuentas gratuitas pueden ver publicidad. Las compras opcionales permiten apoyar el proyecto, inscribirse en actividades habilitadas o activar periodos Premium sin anuncios. En iOS y Android se utilizan los sistemas de compra de App Store y Google Play; en la web se utiliza el proveedor indicado antes de confirmar el pago. Las compras no conceden ventajas sobre el tablero.</p></section>
+    <section><h2>Competición sin apuestas</h2><p>Las damas internacionales son un juego de habilidad. King Damas incluye partidas clasificadas, Elo Damas, torneos y objetivos competitivos, pero no ofrece apuestas, apuestas simuladas, cajas de recompensas, monedas intercambiables por dinero real ni premios monetarios.</p></section>
+    <section><h2>Publicidad y compras</h2><p>Las cuentas gratuitas pueden ver publicidad. Las compras opcionales permiten apoyar el proyecto o activar periodos Premium sin anuncios y con acceso a torneos. No existe una cuota de inscripción adicional. En iOS y Android se utilizan los sistemas de compra de App Store y Google Play; en la web se utiliza el proveedor indicado antes de confirmar el pago. Premium no concede ventajas sobre el tablero.</p></section>
     <section><h2>Contenido oficial</h2><div class="legal-feature-grid"><span><b>Sin contenido sexual</b><small>No hay desnudez ni temas sexuales o sugestivos en el contenido oficial.</small></span><span><b>Sin violencia ni armas</b><small>Capturar una ficha es una mecánica abstracta del tablero, sin daño físico representado.</small></span><span><b>Sin alcohol ni drogas</b><small>El juego no incluye referencias a alcohol, tabaco, drogas, terror o tratamientos médicos.</small></span></div></section>
     <section><h2>Contacto para familias y seguridad</h2><p>Para consultas sobre edad idónea, seguridad, privacidad o convivencia, escribe a <a href="mailto:admin@kingdamas.com?subject=Seguridad%20y%20edad%20King%20Damas">admin@kingdamas.com</a>. Incluye el nombre de usuario y la fecha aproximada del incidente cuando corresponda, pero nunca envíes contraseñas ni datos bancarios.</p></section>`;
 }
@@ -2260,7 +2255,7 @@ function legalAgeSafetyMarkup() {
 function legalCookiesMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Uso actual</b><p>El sitio web de King Damas no utiliza cookies publicitarias ni de seguimiento. Solo emplea los recursos esenciales para mantener la sesión y preferencias locales para personalizar el juego. Las aplicaciones iOS y Android pueden utilizar identificadores publicitarios conforme a las opciones de privacidad del usuario.</p></aside>
     <section><h2>Cookies y almacenamiento utilizados</h2><div class="legal-data-table"><div><b>king_damas_session</b><span>Cookie esencial</span><p>Mantiene la sesión iniciada y protege el acceso a la cuenta. Se gestiona de forma segura.</p></div><div><b>Preferencia de idioma</b><span>Cuenta y almacenamiento local</span><p>Recuerda si prefieres Español o English en tu cuenta y en este navegador.</p></div><div><b>Preferencias de sonido</b><span>Almacenamiento local</span><p>Recuerda música, efectos y volumen elegidos en este navegador.</p></div><div><b>Consentimiento legal</b><span>Almacenamiento local</span><p>Evita pedir nuevamente la misma aceptación a la misma cuenta en este navegador.</p></div></div></section>
-    <section><h2>Servicios externos</h2><p>En la web, PayPal puede cargarse en segundo plano después de iniciar sesión para que sus botones estén listos cuando abras las secciones de apoyo, Premium o inscripción, y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
+    <section><h2>Servicios externos</h2><p>En la web, PayPal puede cargarse en segundo plano después de iniciar sesión para que sus botones estén listos cuando abras las secciones de apoyo o Premium, y puede gestionar datos conforme a sus propias políticas. En las aplicaciones para iOS y Android, Google Mobile Ads puede almacenar o acceder a identificadores y preferencias necesarios para servir, medir y limitar anuncios, según tu elección de privacidad y la normativa aplicable.</p></section>
     <section><h2>Cómo controlarlas</h2><p>Puedes borrar cookies y datos locales desde la configuración del navegador. Si eliminas la cookie de sesión, tendrás que iniciar sesión nuevamente; si eliminas las preferencias, se restaurarán sus valores predeterminados.</p></section>
     <section><h2>Cambios</h2><p>Si en el futuro se incorporan cookies analíticas, publicitarias o cualquier uso no esencial, esta política se actualizará y se solicitará la elección correspondiente antes de activarlas.</p></section>`;
 }
@@ -2270,7 +2265,7 @@ function legalTermsMarkup() {
     <section><h2>1. Aceptación y cuenta</h2><p>Al crear o utilizar una cuenta confirmas que puedes aceptar estas condiciones. Si eres menor de edad, debes contar con autorización y supervisión de tu padre, madre o tutor legal. Debes proporcionar información válida, proteger tus credenciales y responder por la actividad de tu cuenta.</p></section>
     <section><h2>2. Uso permitido</h2><p>King Damas está destinado al juego de damas internacionales 10×10, la interacción comunitaria y la participación en actividades anunciadas. No puedes automatizar partidas, manipular resultados o Elo, explotar fallos, suplantar a otra persona, acosar, amenazar ni publicar contenido ilícito.</p></section>
     <section><h2>3. Juego limpio y moderación</h2><p>Podemos investigar conductas irregulares y aplicar advertencias, anular resultados, limitar funciones o suspender cuentas cuando sea necesario para proteger a la comunidad. Las decisiones competitivas podrán revisarse cuando exista evidencia suficiente.</p></section>
-    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas, requisitos y premios publicados en su ficha. Los aportes son voluntarios y no conceden ventajas competitivas. En la web, PayPal procesa los pagos y cada plan Premium añade el periodo elegido a la cuenta. En las aplicaciones móviles, los pagos se procesan exclusivamente mediante App Store en iOS o Google Play en Android y los planes Premium se renuevan automáticamente salvo cancelación. Premium elimina anuncios al usar la misma cuenta King Damas en iOS, Android y web.</p></section>
+    <section><h2>4. Elo Damas, torneos y pagos</h2><p>El Elo Damas es una medida interna de rendimiento y no tiene valor monetario. Cada torneo puede tener bases adicionales, fechas y requisitos publicados en su ficha, pero no entrega premios monetarios. La inscripción está incluida para las cuentas Premium activas y no tiene una cuota adicional. Los aportes son voluntarios y no conceden ventajas competitivas. En la web, PayPal procesa los pagos y cada plan Premium añade el periodo elegido a la cuenta. En las aplicaciones móviles, los pagos se procesan exclusivamente mediante App Store en iOS o Google Play en Android y los planes Premium se renuevan automáticamente salvo cancelación. Premium elimina anuncios y habilita el acceso a torneos al usar la misma cuenta King Damas en iOS, Android y web, sin modificar partidas, Elo, emparejamientos ni resultados.</p></section>
     <section><h2>5. Disponibilidad y cambios</h2><p>Trabajamos para ofrecer un servicio estable, pero no garantizamos funcionamiento ininterrumpido. Podemos realizar mantenimiento, corregir resultados afectados por errores técnicos y actualizar funciones o estas condiciones. Los cambios importantes serán comunicados dentro de la plataforma y podrán requerir una nueva aceptación.</p></section>
     <section><h2>6. Responsabilidad</h2><p>La plataforma se ofrece según su disponibilidad. En la medida permitida por la ley aplicable, King Damas no responde por interrupciones ajenas a su control, pérdidas indirectas ni decisiones tomadas con base en una clasificación provisional.</p></section>
     <section><h2>7. Legislación y contacto</h2><p>Estas condiciones se interpretan conforme a las leyes aplicables de la República Dominicana. Para preguntas o reclamaciones, escribe a <a href="mailto:admin@kingdamas.com">admin@kingdamas.com</a>. Puedes consultar como referencia la <a href="https://dgii.gov.do/legislacion/leyesTributarias/Documents/Otras%20Leyes%20de%20Inter%C3%A9s/126-02.pdf" target="_blank" rel="noreferrer">Ley 126-02 sobre comercio electrónico y documentos digitales ↗</a>.</p></section>`;
@@ -2278,13 +2273,16 @@ function legalTermsMarkup() {
 
 function legalPrivacyMarkup() {
   return `<aside class="legal-note legal-note--green"><b>Compromiso de privacidad</b><p>Usamos los datos necesarios para operar la cuenta, las partidas y la comunidad. No vendemos información personal.</p></aside>
-    <section><h2>1. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico. En iOS y Android, Google Mobile Ads también puede tratar identificadores del dispositivo, dirección IP, interacciones con anuncios e información de diagnóstico según tu configuración de consentimiento y las opciones permitidas por Apple o Google.</p></section>
-    <section><h2>2. Para qué los utilizamos</h2><p>Los usamos para autenticarte, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar funciones comunitarias, gestionar torneos y pagos, atender solicitudes, prevenir abuso y mantener la seguridad y estabilidad del servicio.</p></section>
-    <section><h2>3. Información visible</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran únicamente a sus participantes, salvo revisión necesaria por seguridad o cumplimiento.</p></section>
-    <section><h2>4. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para prestar funciones esenciales, enviar correos, procesar compras mediante Apple o Google y mostrar anuncios mediante Google Mobile Ads. Algunos pueden procesar información fuera de la República Dominicana conforme a sus propias políticas y mecanismos legales. Solo se comparte lo necesario para su función o cuando exista una obligación legal válida. Cuando corresponda, puedes revisar o cambiar las opciones de privacidad publicitaria desde la sección Quitar anuncios de la aplicación móvil.</p></section>
-    <section><h2>5. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para seguridad, resolución de disputas y obligaciones legales. Aplicamos controles técnicos y organizativos, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
-    <section><h2>6. Tus derechos</h2><p>Puedes solicitar acceso, corrección, actualización o eliminación de tus datos, sujeto a las excepciones legales y registros que debamos conservar. Envía la solicitud desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
-    <section><h2>7. Marco y actualizaciones</h2><p>Esta política toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Informaremos cambios relevantes y solicitaremos una nueva confirmación cuando corresponda.</p></section>`;
+    <section><h2>1. Responsable y contacto</h2><p>King Damas es responsable del tratamiento descrito en esta política. Para consultas, solicitudes o reclamaciones de privacidad, escribe a <a href="mailto:admin@kingdamas.com?subject=Privacidad%20King%20Damas">admin@kingdamas.com</a>. La plataforma se opera desde la República Dominicana.</p></section>
+    <section><h2>2. Datos que tratamos</h2><p>Podemos tratar nombre, usuario, correo, país, preferencia de idioma, foto de perfil, contraseña protegida mediante hash, historial de acceso, partidas, Elo Damas, amistades, mensajes, inscripciones a torneos, referencias de transacciones y datos técnicos necesarios para seguridad y diagnóstico. No recibimos ni almacenamos los números completos de tarjetas utilizados en App Store, Google Play o PayPal. En iOS y Android, Google Mobile Ads también puede tratar identificadores del dispositivo, dirección IP, interacciones con anuncios e información de diagnóstico según tu configuración de consentimiento y las opciones permitidas por Apple o Google.</p></section>
+    <section><h2>3. Para qué los utilizamos</h2><p>Usamos esta información para crear y proteger tu cuenta, operar partidas en tiempo real, calcular clasificaciones, mostrar tu perfil, facilitar mensajes y otras funciones comunitarias, gestionar torneos y compras, restaurar Premium entre plataformas, atender solicitudes, prevenir fraude o abuso y mantener la seguridad y estabilidad del servicio.</p></section>
+    <section><h2>4. Información visible y contenido de usuarios</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran a sus participantes, aunque podremos revisarlos cuando sea razonablemente necesario para investigar reportes, proteger a los usuarios o cumplir una obligación legal.</p></section>
+    <section><h2>5. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para alojamiento e infraestructura, correo, compras mediante Apple y Google, pagos web mediante PayPal y publicidad mediante Google Mobile Ads. Estos proveedores tratan únicamente la información necesaria para prestar su función y pueden procesarla en otros países conforme a sus propias políticas y mecanismos legales. También podremos comunicar información cuando exista una obligación legal válida o sea necesario proteger la plataforma y sus usuarios.</p></section>
+    <section id="opciones-de-privacidad"><h2>6. Tus opciones y derechos</h2><p>Puedes modificar la información y las preferencias disponibles desde Perfil y Configuración. En las aplicaciones móviles, cuando sea aplicable, puedes volver a abrir las opciones de privacidad publicitaria desde Quitar anuncios. También puedes solicitar acceso, corrección, actualización o eliminación de tus datos escribiendo desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
+    <section id="eliminar-cuenta"><h2>7. Eliminación de la cuenta</h2><p>Puedes iniciar la eliminación desde Configuración → Eliminar cuenta. La aplicación solicitará confirmación y tu contraseña antes de completar la acción. También puedes pedirla por correo. Eliminaremos o anonimizaremos la información asociada, salvo los datos que debamos conservar temporalmente por seguridad, prevención de fraude, disputas de pagos u obligaciones legales.</p></section>
+    <section><h2>8. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para los fines descritos, la seguridad, la resolución de disputas y las obligaciones legales. Aplicamos controles técnicos y organizativos para protegerla, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
+    <section><h2>9. Privacidad de menores</h2><p>King Damas está recomendado para personas de 13 años o más. Las personas menores de la edad legal aplicable deben utilizar la plataforma con autorización y supervisión de su padre, madre o tutor. Un responsable puede escribirnos para solicitar la revisión o eliminación de información de un menor.</p></section>
+    <section><h2>10. Marco, vigencia y cambios</h2><p>Esta política está vigente desde el 13 de agosto de 2026 y toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Publicaremos aquí cualquier actualización e informaremos los cambios relevantes cuando corresponda.</p></section>`;
 }
 
 function legalPageMarkup(path: LegalPath) {
@@ -3328,21 +3326,9 @@ function worldTitleHoldersMarkup(world: WorldChampionshipResponse) {
   </section>`;
 }
 
-type TournamentPayment =
-  | {
-      kind: "paypal";
-      config: Awaited<ReturnType<typeof api.donationConfig>>;
-    }
-  | {
-      kind: "native-store";
-      config: AppStoreConfig;
-      product: NativeStoreProduct | null;
-    };
-
 function tournamentsMarkup(
   qualifier: QualifierTournamentResponse,
   world: WorldChampionshipResponse,
-  payment: TournamentPayment,
   participantPage: Awaited<ReturnType<typeof api.tournamentParticipants>>,
 ) {
   const { participants } = participantPage;
@@ -3354,10 +3340,6 @@ function tournamentsMarkup(
   const worldYear = worldTournament?.championshipYear ?? new Date(world.nextStartsAt).getUTCFullYear();
   const qualifierState = tournamentStatus(qualifierTournament, "Próxima inscripción");
   const worldState = tournamentStatus(worldTournament, "Próxima edición");
-  const entryFee = Number(qualifier.entryFee.amount).toFixed(2);
-  const entryPrice = payment.kind === "native-store"
-    ? payment.product?.displayPrice || `${qualifier.entryFee.currency} $${entryFee}`
-    : `$${entryFee}`;
   const canRegister = Boolean(
     qualifierTournament?.status === "open" && !qualifier.viewer?.registered,
   );
@@ -3383,9 +3365,9 @@ function tournamentsMarkup(
     </div>
     <div class="tournament-cards">
       <article class="panel tournament-card tournament-card--qualifier">
-        <header><span class="tournament-emblem">${icon("users")}</span><div><small>ETAPA 1 · ${qualifierYear}</small><h2>Clasificación al<br>Campeonato Mundial</h2></div><div class="tournament-header-actions"><span class="tournament-status ${qualifierState.className}"><i></i>${qualifierState.label}</span>${canRegister ? `<button class="button button--primary tournament-entry-button tournament-entry-button--top" type="button" data-open-tournament-entry>${icon("tournament")} Inscribirme por ${escapeHtml(entryPrice)}</button>` : ""}</div></header>
+        <header><span class="tournament-emblem">${icon("users")}</span><div><small>ETAPA 1 · ${qualifierYear}</small><h2>Clasificación al<br>Campeonato Mundial</h2></div><div class="tournament-header-actions"><span class="tournament-status ${qualifierState.className}"><i></i>${qualifierState.label}</span>${canRegister ? `<button class="button button--primary tournament-entry-button tournament-entry-button--top" type="button" data-open-tournament-entry>${icon("tournament")} ${premiumActive ? "Inscribirme" : "Premium requerido"}</button>` : ""}</div></header>
         <p class="tournament-description">Compite contra jugadores de tu país. Sobrevive a las rondas y gana uno de los cupos para representar a tu bandera.</p>
-        <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inscripción</small><b>${escapeHtml(entryPrice)}</b></span><span><small>Participantes</small><b>${qualifierTournament?.participantCount ?? 0}</b></span></div>
+        <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Acceso</small><b>Premium</b></span><span><small>Participantes</small><b>${qualifierTournament?.participantCount ?? 0}</b></span></div>
         <div class="tournament-timeline">
           <span class="is-active"><i></i><p><small>INSCRIPCIÓN HASTA</small><b>${tournamentDate(registrationEnd)}</b></p></span>
           <span><i></i><p><small>COMPETENCIA</small><b>${tournamentDate(qualifierStarts)} – ${tournamentDate(qualifierEnds)}</b></p></span>
@@ -3406,7 +3388,7 @@ function tournamentsMarkup(
         <p class="tournament-description">Los representantes de cada país se enfrentan en la máxima competencia anual de King Damas.</p>
         <div class="tournament-facts"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>30 min</b></span><span><small>Inicio</small><b>${tournamentDate(worldStarts)}</b></span><span><small>Final</small><b>${tournamentDate(worldEnds)}</b></span></div>
         ${worldTitleHoldersMarkup(world)}
-        <div class="world-prizes"><small>DISTRIBUCIÓN DEL FONDO DE PREMIOS</small><div><span class="is-gold"><i>1</i><b>20%</b><small>Campeón</small></span><span class="is-silver"><i>2</i><b>10%</b><small>Segundo</small></span><span class="is-bronze"><i>3</i><b>5%</b><small>Tercero</small></span></div>${worldTournament?.prizePool ? `<p>Fondo actual: <b>${worldTournament.prizePool.currency} ${worldTournament.prizePool.amount.toLocaleString(localeCode())}</b></p>` : ""}</div>
+        <div class="world-recognition"><small>RECONOCIMIENTO DEPORTIVO</small><p>Los tres mejores reciben trofeos de perfil y pase directo a la siguiente edición. No se entregan premios monetarios.</p></div>
         <ul class="tournament-rules"><li><span>🌎</span><p><b>Representación internacional</b><small>Clasificados por país y los tres campeones vigentes.</small></p></li><li><span>↻</span><p><b>Todos contra todos</b><small>Cada participante enfrenta a cada rival una vez.</small></p></li><li><span>♛</span><p><b>El podio cambia de dueño</b><small>Los tres mejores reciben los trofeos hasta la siguiente edición.</small></p></li></ul>
         ${viewerHasWorldPlace ? `<div class="tournament-viewer is-qualified"><span>✓</span><p><b>${world.viewer?.directlyQualified ? "Tu pase directo al Mundial está confirmado" : "Estás en el Campeonato Mundial"}</b><small>${world.viewer?.directlyQualified ? "Eres parte del podio vigente y no necesitas jugar la clasificatoria." : "Tu clasificación fue registrada automáticamente."}</small></p></div>` : `<div class="tournament-callout tournament-callout--world">El acceso es automático al clasificar por tu país. Los tres campeones vigentes conservan pase directo.</div>`}
       </article>
@@ -3416,18 +3398,14 @@ function tournamentsMarkup(
       <span class="tournament-entry-seal">${icon("tournament")}</span>
       <span class="section-kicker">INSCRIPCIÓN OFICIAL · ${qualifierYear}</span>
       <h2 id="tournament-entry-title">Representa a tu país</h2>
-      <p>Tu inscripción corresponde a la Clasificación al Campeonato Mundial y se confirma al completar el pago.</p>
-      <div class="tournament-entry-summary"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>País</small><b>${flag(currentUser?.countryCode || "")} ${escapeHtml(currentUser?.countryCode || "")}</b></span><span><small>Total</small><b>${escapeHtml(entryPrice)}</b></span></div>
+      <p>La inscripción está incluida con Premium, sin cuota adicional, y te permite competir por uno de los cupos de tu país.</p>
+      <div class="tournament-entry-summary"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>País</small><b>${flag(currentUser?.countryCode || "")} ${escapeHtml(currentUser?.countryCode || "")}</b></span><span><small>Acceso</small><b>Premium</b></span></div>
       <p class="tournament-entry-error" data-tournament-entry-error aria-live="polite"></p>
-      <div class="tournament-paypal" data-tournament-payment>${payment.kind === "native-store"
-        ? payment.config.enabled && payment.config.appAccountToken && payment.product
-          ? `<button class="button button--app-store" type="button" data-purchase-tournament-native>${isAndroidNativeApp() ? "▶" : ""} Inscribirme con ${nativeStoreName()} · ${escapeHtml(payment.product.displayPrice)}</button>`
-          : `<div class="donation-sdk-error"><b>${nativeStoreName()} no está disponible ahora mismo.</b><small>La inscripción no se puede procesar en esta versión.</small></div>`
-        : payment.config.enabled
-          ? `<span class="loader loader--small"></span><small>Preparando pago seguro…</small>`
-          : `<div class="donation-sdk-error"><b>PayPal no está disponible ahora mismo.</b><small>Inténtalo nuevamente más tarde.</small></div>`}</div>
-      <section class="tournament-official-rules"><b>Bases oficiales resumidas</b><ul><li>Organiza King Damas; competencia de habilidad en tablero 10×10.</li><li>Partidas de 30 minutos por jugador; dos derrotas eliminan y clasifican tres jugadores por país.</li><li>Inscripción hasta el ${tournamentDate(registrationEnd)}; competencia del ${tournamentDate(qualifierStarts)} al ${tournamentDate(qualifierEnds)}.</li><li>El Mundial distribuye 20%, 10% y 5% del fondo a los tres primeros puestos.</li></ul><small>Apple y Google no patrocinan, organizan ni participan en este torneo.</small></section>
-      <small class="tournament-entry-note">Al continuar aceptas las bases oficiales. La inscripción no mejora tu Elo ni concede ventajas competitivas.</small>
+      <div class="tournament-entry-action">${premiumActive
+        ? `<button class="button button--primary" type="button" data-confirm-tournament-entry>Confirmar inscripción</button>`
+        : `<div class="donation-sdk-error"><b>Necesitas Premium para participar.</b><small>Elige un plan activo y vuelve para completar tu inscripción sin cuota adicional.</small></div><button class="button button--primary" type="button" data-go-tournament-premium>Ver planes Premium</button>`}</div>
+      <section class="tournament-official-rules"><b>Bases oficiales resumidas</b><ul><li>Organiza King Damas; competencia de habilidad en tablero 10×10.</li><li>Partidas de 30 minutos por jugador; dos derrotas eliminan y clasifican tres jugadores por país.</li><li>Inscripción hasta el ${tournamentDate(registrationEnd)}; competencia del ${tournamentDate(qualifierStarts)} al ${tournamentDate(qualifierEnds)}.</li><li>La inscripción está incluida con Premium; no existe una cuota adicional ni se entregan premios monetarios.</li></ul></section>
+      <small class="tournament-entry-note">Al continuar aceptas las bases oficiales. Premium habilita la participación, pero no modifica partidas, Elo, emparejamientos ni resultados.</small>
     </dialog>
     <dialog class="tournament-participants-dialog" aria-labelledby="tournament-participants-title">
       <header><div><span class="section-kicker">PERFILES DE TORNEO</span><h2 id="tournament-participants-title" data-participants-title>Jugadores inscritos</h2><p data-participants-subtitle>${participantTotal} ${participantTotal === 1 ? "perfil confirmado" : "perfiles confirmados"}</p></div><button type="button" data-close-tournament-participants aria-label="Cerrar">×</button></header>
@@ -3451,29 +3429,12 @@ async function renderTournaments() {
       api.qualifierTournament(),
       api.worldChampionship(),
     ]);
-    let payment: TournamentPayment;
-    if (isNativeAdsAvailable()) {
-      const config = await nativeStoreConfig();
-      const tournamentProduct = config.products.tournamentEntry;
-      let product: NativeStoreProduct | null = null;
-      if (config.enabled && config.appAccountToken && isNativeStoreAvailable()) {
-        try {
-          const storeProducts = await nativeStoreProducts([tournamentProduct.productId]);
-          product = storeProducts.find((item) => item.id === tournamentProduct.productId) || null;
-        } catch (storeError) {
-          console.warn(`${nativeStoreName()} todavía no devolvió los productos del torneo.`, storeError);
-        }
-      }
-      payment = { kind: "native-store", config, product };
-    } else {
-      payment = { kind: "paypal", config: await api.donationConfig() };
-    }
     const participantPage = qualifier.tournament
       ? await api.tournamentParticipants(qualifier.tournament.id)
       : { participants: [], total: 0, nextOffset: 0, hasMore: false };
-    root.innerHTML = appLayout(tournamentsMarkup(qualifier, world, payment, participantPage), "tournaments");
+    root.innerHTML = appLayout(tournamentsMarkup(qualifier, world, participantPage), "tournaments");
     bindNavigation();
-    bindTournaments(qualifier, payment, participantPage);
+    bindTournaments(qualifier, participantPage);
   } catch (error) {
     root.innerHTML = appLayout(errorState(errorMessage(error)), "tournaments");
     bindNavigation();
@@ -3483,15 +3444,11 @@ async function renderTournaments() {
 
 function bindTournaments(
   qualifier: QualifierTournamentResponse,
-  payment: TournamentPayment,
   initialParticipantPage: Awaited<ReturnType<typeof api.tournamentParticipants>>,
 ) {
   const tournament = qualifier.tournament;
   const dialog = root.querySelector<HTMLDialogElement>(".tournament-entry-dialog");
-  const container = dialog?.querySelector<HTMLElement>("[data-tournament-payment]");
   const error = dialog?.querySelector<HTMLElement>("[data-tournament-entry-error]");
-  let paymentButtons: PayPalButtonsInstance | null = null;
-  let initializing = false;
   const participantsDialog = root.querySelector<HTMLDialogElement>(".tournament-participants-dialog");
   const participantsGrid = participantsDialog?.querySelector<HTMLElement>("[data-participants-grid]");
   const participantsTitle = participantsDialog?.querySelector<HTMLElement>("[data-participants-title]");
@@ -3516,90 +3473,30 @@ function bindTournaments(
   dialog?.addEventListener("click", (event) => {
     if (event.target === dialog) closeDialog();
   });
-  dialog?.querySelector<HTMLButtonElement>("[data-purchase-tournament-native]")?.addEventListener("click", async (event) => {
-    if (
-      payment.kind !== "native-store" ||
-      !payment.config.appAccountToken ||
-      !payment.product ||
-      !tournament ||
-      !error
-    ) return;
+  root.querySelector("[data-open-tournament-entry]")?.addEventListener("click", () => {
+    if (!dialog || !tournament) return;
+    dialog.showModal();
+  });
+  dialog?.querySelector<HTMLButtonElement>("[data-go-tournament-premium]")?.addEventListener("click", () => {
+    dialog.close();
+    navigate("/apoyar");
+  });
+  dialog?.querySelector<HTMLButtonElement>("[data-confirm-tournament-entry]")?.addEventListener("click", async (event) => {
+    if (!tournament || !error) return;
     const button = event.currentTarget as HTMLButtonElement;
-    const originalLabel = button.textContent || `Inscribirme con ${nativeStoreName()}`;
+    const originalLabel = button.textContent || "Confirmar inscripción";
     button.disabled = true;
-    button.textContent = `Confirmando con ${nativeStoreName()}…`;
+    button.textContent = "Confirmando…";
     error.textContent = "";
     try {
-      const result = await purchaseNativeStoreProduct(
-        payment.product.id,
-        payment.config.appAccountToken,
-      );
-      if (result.state === "cancelled") {
-        button.disabled = false;
-        button.textContent = originalLabel;
-        toast("La inscripción fue cancelada; no se realizó ningún cargo.", "error");
-        return;
-      }
-      if (result.state === "pending") {
-        error.textContent = `La compra espera aprobación de ${nativeStoreName()}. La inscripción se confirmará automáticamente.`;
-        button.textContent = "Pendiente de aprobación";
-        return;
-      }
-      if (!result.transaction) return;
-      try {
-        await confirmAndFinishNativeTransaction(result.transaction);
-      } catch (confirmationError) {
-        error.textContent = `${nativeStoreName()} confirmó el cobro, pero la inscripción aún está pendiente. La reintentaremos automáticamente; no vuelvas a comprar.`;
-        button.textContent = "Confirmación pendiente";
-        console.warn(`La inscripción de ${nativeStoreName()} quedó pendiente.`, confirmationError);
-        return;
-      }
+      await api.registerForTournament(tournament.id);
       dialog?.close();
       toast("¡Inscripción confirmada! Ya representas a tu país.");
       await renderTournaments();
-    } catch (purchaseError) {
-      error.textContent = errorMessage(purchaseError);
+    } catch (registrationError) {
+      error.textContent = errorMessage(registrationError);
       button.disabled = false;
       button.textContent = originalLabel;
-    }
-  });
-  root.querySelector("[data-open-tournament-entry]")?.addEventListener("click", async () => {
-    if (!dialog || !container || !error || !tournament) return;
-    dialog.showModal();
-    if (payment.kind === "native-store") return;
-    if (!payment.config.enabled || !payment.config.clientId || paymentButtons || initializing) return;
-    initializing = true;
-    error.textContent = "";
-    try {
-      const paypal = await loadPayPalSdk(
-        payment.config.clientId,
-        payment.config.currency,
-      );
-      if (!dialog.isConnected) return;
-      container.innerHTML = "";
-      paymentButtons = paypal.Buttons({
-        style: { layout: "vertical", color: "gold", shape: "rect", label: "paypal", height: 45 },
-        createOrder: async () => (await api.createTournamentEntryOrder(tournament.id)).id,
-        onApprove: async ({ orderID }) => {
-          const result = await api.captureTournamentEntryOrder(tournament.id, orderID);
-          if (result.status !== "COMPLETED") {
-            throw new Error("PayPal no pudo confirmar la inscripción.");
-          }
-          dialog.close();
-          toast("¡Inscripción confirmada! Ya representas a tu país.");
-          await renderTournaments();
-        },
-        onCancel: () => toast("La inscripción fue cancelada; no se realizó ningún cargo.", "error"),
-        onError: (paymentError) => {
-          error.textContent = errorMessage(paymentError);
-        },
-      });
-      await paymentButtons.render(container);
-    } catch (sdkError) {
-      error.textContent = errorMessage(sdkError);
-      container.innerHTML = `<div class="donation-sdk-error"><b>No pudimos abrir PayPal.</b><small>Revisa tu conexión e inténtalo nuevamente.</small></div>`;
-    } finally {
-      initializing = false;
     }
   });
   const showParticipantList = () => {
@@ -3773,7 +3670,6 @@ function bindTournaments(
   pageCleanup = () => {
     stopBracketRefresh();
     if (participantSearchTimer) window.clearTimeout(participantSearchTimer);
-    paymentButtons?.close?.();
     if (dialog?.open) dialog.close();
     if (participantsDialog?.open) participantsDialog.close();
     if (bracketDialog?.open) bracketDialog.close();
