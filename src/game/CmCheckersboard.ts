@@ -1,5 +1,12 @@
-import type { BoardState, LegalMove, Position, Side } from "../types";
-import { destination, getLegalMoves, playableNumber, samePosition } from "./engine";
+import type { BoardState, LegalMove, Piece, Position, Side } from "../types";
+import {
+  destination,
+  findAppliedMove,
+  getLegalMoves,
+  playableNumber,
+  sameBoard,
+  samePosition,
+} from "./engine";
 
 interface BoardOptions {
   orientation: Side;
@@ -7,6 +14,16 @@ interface BoardOptions {
   pieceColors: Record<Side, string>;
   onMove: (move: LegalMove) => Promise<void> | void;
 }
+
+interface BoardUpdate {
+  board: BoardState;
+  currentPlayer: Side;
+  enabled: boolean;
+  lastMoveNotation?: string;
+}
+
+const cloneBoard = (board: BoardState): BoardState =>
+  board.map((row) => row.map((piece) => (piece ? { ...piece } : null)));
 
 /**
  * Adaptador 10×10 inspirado en el modelo responsive y de puntero de
@@ -18,8 +35,14 @@ export class CmCheckersboard {
   private board: BoardState = [];
   private selected: Position | null = null;
   private legalMoves: LegalMove[] = [];
+  private currentPlayer: Side = "ivory";
   private enabled = false;
   private busy = false;
+  private animating = false;
+  private destroyed = false;
+  private animationToken = 0;
+  private pendingUpdate: BoardUpdate | null = null;
+  private readonly activeAnimations = new Set<Animation>();
   private readonly squares: HTMLButtonElement[] = [];
   private readonly pointerEvent = "pointerdown";
 
@@ -35,10 +58,35 @@ export class CmCheckersboard {
     this.createSquares();
   }
 
-  update(board: BoardState, currentPlayer: Side, enabled: boolean) {
-    this.board = board;
-    this.enabled = enabled;
-    this.legalMoves = enabled ? getLegalMoves(board, currentPlayer) : [];
+  update(board: BoardState, currentPlayer: Side, enabled: boolean, lastMoveNotation?: string) {
+    const update = { board, currentPlayer, enabled, lastMoveNotation };
+    if (this.animating) {
+      this.pendingUpdate = update;
+      return;
+    }
+    this.applyUpdate(update);
+  }
+
+  private applyUpdate(update: BoardUpdate) {
+    if (sameBoard(this.board, update.board)) {
+      this.commitUpdate(update);
+      return;
+    }
+    const move = this.board.length
+      ? findAppliedMove(this.board, update.board, this.currentPlayer, update.lastMoveNotation)
+      : null;
+    if (move?.captures && this.canAnimate()) {
+      this.startCaptureAnimation(update, move);
+      return;
+    }
+    this.commitUpdate(update);
+  }
+
+  private commitUpdate(update: BoardUpdate) {
+    this.board = update.board;
+    this.currentPlayer = update.currentPlayer;
+    this.enabled = update.enabled;
+    this.legalMoves = update.enabled ? getLegalMoves(update.board, update.currentPlayer) : [];
     if (
       this.selected &&
       !this.legalMoves.some((move) => samePosition(move.from, this.selected!))
@@ -50,10 +98,15 @@ export class CmCheckersboard {
 
   setPieceColors(pieceColors: Record<Side, string>) {
     this.options.pieceColors = pieceColors;
-    this.render();
+    if (!this.animating) this.render();
   }
 
   destroy() {
+    this.destroyed = true;
+    this.animationToken += 1;
+    this.activeAnimations.forEach((animation) => animation.cancel());
+    this.activeAnimations.clear();
+    this.element.closest(".board-shell")?.classList.remove("is-animating-capture");
     this.element.removeEventListener(this.pointerEvent, this.handlePointer);
     this.element.removeEventListener("keydown", this.handleKeyboard);
     this.squares.length = 0;
@@ -79,7 +132,7 @@ export class CmCheckersboard {
   }
 
   private select(position: Position) {
-    if (!this.enabled || this.busy) return;
+    if (!this.enabled || this.busy || this.animating) return;
     const move = this.moveTo(position);
     if (move) {
       this.busy = true;
@@ -172,12 +225,7 @@ export class CmCheckersboard {
           square.append(marker);
         }
         if (piece) {
-          const checker = document.createElement("span");
-          checker.className = `checker checker--${piece.player}${piece.king ? " is-king" : ""}`;
-          checker.style.setProperty("--piece-color", this.safeColor(piece.player));
-          checker.setAttribute("aria-hidden", "true");
-          if (piece.king) checker.innerHTML = '<span class="checker-crown">♛</span>';
-          square.append(checker);
+          square.append(this.createChecker(piece));
         }
         if (selectedCaptureCount > 0) {
           const captureBadge = document.createElement("span");
@@ -191,8 +239,157 @@ export class CmCheckersboard {
         }
       }
     }
-    this.element.classList.toggle("is-disabled", !this.enabled);
-    this.element.setAttribute("aria-busy", String(this.busy));
+    this.element.classList.toggle("is-disabled", !this.enabled || this.animating);
+    this.element.classList.toggle("is-animating-capture", this.animating);
+    this.element.closest(".board-shell")?.classList.toggle("is-animating-capture", this.animating);
+    this.element.setAttribute("aria-busy", String(this.busy || this.animating));
+  }
+
+  private createChecker(piece: Piece) {
+    const checker = document.createElement("span");
+    checker.className = `checker checker--${piece.player}${piece.king ? " is-king" : ""}`;
+    checker.style.setProperty("--piece-color", this.safeColor(piece.player));
+    checker.setAttribute("aria-hidden", "true");
+    if (piece.king) checker.innerHTML = '<span class="checker-crown">♛</span>';
+    return checker;
+  }
+
+  private canAnimate() {
+    if (
+      this.destroyed ||
+      document.visibilityState === "hidden" ||
+      typeof HTMLElement.prototype.animate !== "function"
+    ) return false;
+    return typeof window.matchMedia !== "function" ||
+      !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  private startCaptureAnimation(update: BoardUpdate, move: LegalMove) {
+    const token = ++this.animationToken;
+    this.animating = true;
+    this.enabled = false;
+    this.selected = null;
+    this.legalMoves = [];
+    this.render();
+    void this.animateCapture(move, token).then(
+      () => this.completeCaptureAnimation(token, update),
+      () => this.completeCaptureAnimation(token, update),
+    );
+  }
+
+  private completeCaptureAnimation(token: number, update: BoardUpdate) {
+    if (this.destroyed || token !== this.animationToken) return;
+    let completedUpdate = update;
+    let queuedUpdate = this.pendingUpdate;
+    this.pendingUpdate = null;
+    if (queuedUpdate && sameBoard(queuedUpdate.board, update.board)) {
+      completedUpdate = queuedUpdate;
+      queuedUpdate = null;
+    }
+    this.animating = false;
+    this.commitUpdate(completedUpdate);
+    if (queuedUpdate) this.applyUpdate(queuedUpdate);
+  }
+
+  private async animateCapture(move: LegalMove, token: number) {
+    const movingPiece = this.board[move.from.row]?.[move.from.col];
+    if (!movingPiece) return;
+    const animatedBoard = cloneBoard(this.board);
+    let current = move.from;
+    const visited: Position[] = [move.from];
+    const traveler = this.createChecker(movingPiece);
+    traveler.classList.add("capture-traveler");
+    this.placeTraveler(traveler, current);
+    this.element.append(traveler);
+    this.markCaptureRoute(visited, current);
+
+    try {
+      for (const step of move.steps) {
+        if (this.destroyed || token !== this.animationToken) return;
+        const start = this.visualCenter(current);
+        const end = this.visualCenter(step.to);
+        const distance = Math.max(
+          Math.abs(step.to.row - current.row),
+          Math.abs(step.to.col - current.col),
+        );
+        const duration = Math.min(320, 180 + distance * 18);
+        const capturedSquare = step.captured ? this.squareAt(step.captured) : null;
+        capturedSquare?.classList.add("is-capture-target");
+        this.squareAt(step.to)?.classList.add("is-capture-landing");
+        const capturedChecker = capturedSquare?.querySelector<HTMLElement>(".checker") ?? null;
+        const animations = [traveler.animate([
+          { left: `${start.left}%`, top: `${start.top}%`, transform: "translate3d(-50%, -50%, 0) scale(1)" },
+          { left: `${(start.left + end.left) / 2}%`, top: `${(start.top + end.top) / 2}%`, transform: "translate3d(-50%, -50%, 0) scale(1.08)", offset: 0.5 },
+          { left: `${end.left}%`, top: `${end.top}%`, transform: "translate3d(-50%, -50%, 0) scale(1)" },
+        ], {
+          duration,
+          easing: "cubic-bezier(.22,.8,.3,1)",
+          fill: "forwards",
+        })];
+        if (capturedChecker) {
+          animations.push(capturedChecker.animate([
+            { opacity: 1, transform: "translate3d(-50%, -50%, 0) scale(1)" },
+            { opacity: 1, transform: "translate3d(-50%, -50%, 0) scale(1.08)", offset: 0.55 },
+            { opacity: 0, transform: "translate3d(-50%, -50%, 0) scale(.55)" },
+          ], {
+            duration,
+            easing: "ease-in",
+            fill: "forwards",
+          }));
+        }
+        await Promise.all(animations.map((animation) => this.settleAnimation(animation)));
+        if (this.destroyed || token !== this.animationToken) return;
+
+        animatedBoard[current.row]![current.col] = null;
+        if (step.captured) animatedBoard[step.captured.row]![step.captured.col] = null;
+        animatedBoard[step.to.row]![step.to.col] = { ...movingPiece };
+        current = step.to;
+        visited.push(current);
+        this.board = animatedBoard;
+        this.placeTraveler(traveler, current);
+        this.render();
+        this.markCaptureRoute(visited, current);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 45));
+      }
+    } finally {
+      traveler.remove();
+    }
+  }
+
+  private async settleAnimation(animation: Animation) {
+    this.activeAnimations.add(animation);
+    try {
+      await animation.finished;
+    } catch {
+      // La animación se cancela al abandonar la pantalla.
+    } finally {
+      this.activeAnimations.delete(animation);
+    }
+  }
+
+  private visualCenter(position: Position) {
+    const flipped = this.options.orientation === "ivory";
+    const row = flipped ? 9 - position.row : position.row;
+    const col = flipped ? 9 - position.col : position.col;
+    return { left: (col + 0.5) * 10, top: (row + 0.5) * 10 };
+  }
+
+  private placeTraveler(traveler: HTMLElement, position: Position) {
+    const center = this.visualCenter(position);
+    traveler.style.left = `${center.left}%`;
+    traveler.style.top = `${center.top}%`;
+  }
+
+  private squareAt(position: Position) {
+    const flipped = this.options.orientation === "ivory";
+    const visualRow = flipped ? 9 - position.row : position.row;
+    const visualCol = flipped ? 9 - position.col : position.col;
+    return this.squares[visualRow * 10 + visualCol] ?? null;
+  }
+
+  private markCaptureRoute(visited: Position[], current: Position) {
+    visited.forEach((position) => this.squareAt(position)?.classList.add("is-capture-route"));
+    this.squareAt(current)?.querySelector(".checker")?.classList.add("is-animation-source");
   }
 
   private safeColor(side: Side) {

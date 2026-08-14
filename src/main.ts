@@ -4662,7 +4662,12 @@ async function renderLegendGame(
   }
 
   function renderState() {
-    board?.update(position, currentPlayer, status === "active" && currentPlayer === humanSide && !thinking);
+    board?.update(
+      position,
+      currentPlayer,
+      status === "active" && currentPlayer === humanSide && !thinking,
+      moves.at(-1)?.notation,
+    );
     const pieces = countPieces(position);
     root.querySelectorAll<HTMLElement>("[data-piece-count]").forEach((element) => {
       const side = element.dataset.pieceCount as Side;
@@ -4933,7 +4938,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
     game = next;
     board?.setPieceColors(game.pieceColors);
     if (game.moveCount > previousMoveCount) playMoveSound(game.moves.at(-1)?.captures ?? 0);
-    board?.update(game.board, game.currentPlayer, false);
+    board?.update(game.board, game.currentPlayer, false, game.moves.at(-1)?.notation);
     const pieces = countPieces(game.board);
     root.querySelectorAll<HTMLElement>("[data-piece-count]").forEach((element) => {
       const side = element.dataset.pieceCount as Side;
@@ -5132,7 +5137,7 @@ function mountGame(initialGame: Game) {
     if (game.moveCount > previousMoveCount) {
       playMoveSound(game.moves.at(-1)?.captures ?? 0);
     }
-    board?.update(game.board, game.currentPlayer, canMove());
+    board?.update(game.board, game.currentPlayer, canMove(), game.moves.at(-1)?.notation);
     const stateLabel = root.querySelector<HTMLElement>(".game-state-label");
     if (stateLabel) stateLabel.textContent = gameStatus(game);
     root.querySelectorAll<HTMLElement>("[data-player-bar]").forEach((bar) => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BoardState, Piece } from "../types";
-import { destination, getLegalMoves, playableNumber } from "./engine";
+import { applyMove, destination, findAppliedMove, getLegalMoves, playableNumber } from "./engine";
 import { chooseLegendMove } from "./legendAi";
 import { LEGENDS } from "./legends";
 
@@ -49,6 +49,20 @@ describe("motor 10×10 del cliente", () => {
     const moves = getLegalMoves(board, "ivory");
     expect(moves.every((move) => move.captures === 2)).toBe(true);
     expect(moves.every((move) => move.from.col === 1)).toBe(true);
+  });
+
+  it("reconstruye el recorrido completo de una captura ya aplicada", () => {
+    const board = emptyBoard();
+    board[2]![1] = { player: "ivory", king: false };
+    board[3]![2] = { player: "mahogany", king: false };
+    board[5]![4] = { player: "mahogany", king: false };
+    const move = getLegalMoves(board, "ivory")[0]!;
+
+    expect(findAppliedMove(board, applyMove(board, move), "ivory")).toEqual(move);
+    expect(move.steps.map((step) => step.to)).toEqual([
+      { row: 4, col: 3 },
+      { row: 6, col: 5 },
+    ]);
   });
 
   it("permite que una dama se desplace por toda la diagonal", () => {

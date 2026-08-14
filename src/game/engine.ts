@@ -213,6 +213,31 @@ export function applyMove(board: BoardState, move: LegalMove): BoardState {
   return next;
 }
 
+export function sameBoard(a: BoardState, b: BoardState) {
+  if (a.length !== b.length) return false;
+  return a.every((row, rowIndex) => {
+    const otherRow = b[rowIndex];
+    if (!otherRow || row.length !== otherRow.length) return false;
+    return row.every((piece, colIndex) => {
+      const other = otherRow[colIndex] ?? null;
+      return piece?.player === other?.player && Boolean(piece?.king) === Boolean(other?.king);
+    });
+  });
+}
+
+export function findAppliedMove(
+  board: BoardState,
+  next: BoardState,
+  player: Side,
+  notation?: string,
+) {
+  const matchingMoves = getLegalMoves(board, player)
+    .filter((move) => sameBoard(applyMove(board, move), next));
+  return matchingMoves.find((move) => !notation || moveNotation(move) === notation) ??
+    matchingMoves[0] ??
+    null;
+}
+
 export function countPieces(board: BoardState) {
   const counts: Record<Side, { total: number; kings: number }> = {
     ivory: { total: 0, kings: 0 },
