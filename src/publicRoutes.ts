@@ -109,6 +109,15 @@ export function isPublicContentPath(pathname: string): pathname is PublicContent
   return PUBLIC_CONTENT_PATHS.includes(pathname as PublicContentPath);
 }
 
+export function resolveAppPath(pathname: string, hash: string) {
+  const publicPath = normalizePublicPath(pathname);
+  const hashPath = hash.replace(/^#/, "");
+  if (hashPath && !(isPublicContentPath(publicPath) && !hashPath.startsWith("/"))) {
+    return hashPath;
+  }
+  return isPublicContentPath(publicPath) ? publicPath : "/inicio";
+}
+
 export function publicPageMetadata(pathname: string, language: AppLanguage) {
   const path = normalizePublicPath(pathname);
   return pageMetadata[path as keyof typeof pageMetadata]?.[language] ?? pageMetadata["/"][language];

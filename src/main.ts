@@ -62,7 +62,7 @@ import type {
   WorldChampionshipResponse,
 } from "./types";
 import { avatarMarkup, escapeHtml, flag, formatClock, icon } from "./ui";
-import { isPublicContentPath, normalizePublicPath } from "./publicRoutes";
+import { resolveAppPath } from "./publicRoutes";
 import { removeWebAdBanner, syncWebAdBanner } from "./webAds";
 import {
   finishNativeStoreTransaction,
@@ -272,12 +272,7 @@ async function syncAccountPremium(
 }
 type LegalPath = (typeof LEGAL_ROUTES)[number]["path"];
 
-const route = () => {
-  const hashPath = location.hash.replace(/^#/, "");
-  if (hashPath) return hashPath;
-  const publicPath = normalizePublicPath(location.pathname);
-  return isPublicContentPath(publicPath) ? publicPath : "/inicio";
-};
+const route = () => resolveAppPath(location.pathname, location.hash);
 let renderedPath = route();
 let bypassNextHashGuard = false;
 
@@ -844,7 +839,7 @@ function profilePhotoDialogMarkup() {
       <span class="delete-account-symbol">!</span>
       <span class="section-kicker">ACCIÓN IRREVERSIBLE</span>
       <h2 id="delete-account-title">Eliminar tu cuenta</h2>
-      <p>Tu perfil y los datos asociados se eliminarán permanentemente. Algunos resultados históricos pueden conservar el nombre registrado para mantener la integridad competitiva.</p>
+      <p>Tu perfil y los datos asociados se eliminarán permanentemente. Los resultados históricos se conservarán únicamente de forma anónima. Si tienes una suscripción móvil, debes cancelarla por separado en Google Play o App Store.</p>
       <form class="delete-account-form" data-delete-account-form>
         <label>Confirma con tu contraseña<input name="password" type="password" autocomplete="current-password" required placeholder="Tu contraseña actual" /></label>
         <p class="delete-account-error" data-delete-account-error aria-live="polite"></p>
@@ -2276,8 +2271,13 @@ function legalPrivacyMarkup() {
     <section><h2>4. Información visible y contenido de usuarios</h2><p>Tu nombre, usuario, país, foto, rango, Elo Damas y actividad competitiva pueden mostrarse a otros usuarios. El correo, la contraseña y los datos privados de soporte no se publican. Los mensajes se muestran a sus participantes, aunque podremos revisarlos cuando sea razonablemente necesario para investigar reportes, proteger a los usuarios o cumplir una obligación legal.</p></section>
     <section><h2>5. Proveedores y transferencias</h2><p>Podemos utilizar proveedores especializados para alojamiento e infraestructura, correo, compras mediante Apple y Google, pagos web mediante PayPal y publicidad mediante Google Mobile Ads. Estos proveedores tratan únicamente la información necesaria para prestar su función y pueden procesarla en otros países conforme a sus propias políticas y mecanismos legales. También podremos comunicar información cuando exista una obligación legal válida o sea necesario proteger la plataforma y sus usuarios.</p></section>
     <section id="opciones-de-privacidad"><h2>6. Tus opciones y derechos</h2><p>Puedes modificar la información y las preferencias disponibles desde Perfil y Configuración. En las aplicaciones móviles, cuando sea aplicable, puedes volver a abrir las opciones de privacidad publicitaria desde Quitar anuncios. También puedes solicitar acceso, corrección, actualización o eliminación de tus datos escribiendo desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Solicitud%20de%20privacidad%20King%20Damas">admin@kingdamas.com</a>.</p></section>
-    <section id="eliminar-cuenta"><h2>7. Eliminación de la cuenta</h2><p>Puedes iniciar la eliminación desde Configuración → Eliminar cuenta. La aplicación solicitará confirmación y tu contraseña antes de completar la acción. También puedes pedirla por correo. Eliminaremos o anonimizaremos la información asociada, salvo los datos que debamos conservar temporalmente por seguridad, prevención de fraude, disputas de pagos u obligaciones legales.</p></section>
-    <section><h2>8. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa y durante el tiempo adicional razonablemente necesario para los fines descritos, la seguridad, la resolución de disputas y las obligaciones legales. Aplicamos controles técnicos y organizativos para protegerla, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
+    <section id="eliminar-cuenta" class="account-deletion-policy"><h2>7. Eliminación de la cuenta y los datos</h2><p>Esta es la página pública de eliminación de cuentas de <strong>King Damas</strong>, desarrollada y operada por King Damas. Puedes eliminar tu cuenta directamente en la aplicación o solicitarlo aunque ya no tengas acceso a ella.</p>
+      <div class="account-deletion-steps"><h3>Eliminarla desde la aplicación</h3><ol><li>Inicia sesión en King Damas.</li><li>Abre <strong>Configuración</strong> desde el menú de tu cuenta.</li><li>Selecciona <strong>Administrar cuenta → Eliminar cuenta</strong>.</li><li>Escribe tu contraseña y confirma <strong>Eliminar definitivamente</strong>.</li></ol></div>
+      <div class="account-deletion-steps"><h3>Solicitarla por correo</h3><p>Escribe desde el correo asociado a tu cuenta a <a href="mailto:admin@kingdamas.com?subject=Eliminar%20cuenta%20King%20Damas">admin@kingdamas.com</a> con el asunto “Eliminar cuenta King Damas” e incluye tu nombre de usuario. Verificaremos que la cuenta te pertenece antes de completar la solicitud.</p></div>
+      <div class="legal-data-table account-deletion-data"><div><b>Se elimina</b><span>Inmediatamente</span><p>Nombre, usuario, correo, país, foto, contraseña protegida, preferencias, Elo, progreso, amistades, mensajes, inscripciones, derechos Premium y referencias locales de compras.</p></div><div><b>Partidas finalizadas</b><span>Anonimizadas</span><p>El resultado, la notación y las estadísticas generales se conservan indefinidamente sin el identificador, nombre, usuario, correo ni otro vínculo con la cuenta eliminada.</p></div><div><b>Solicitud por correo</b><span>Hasta 30 días</span><p>Las solicitudes recibidas por correo se verifican y completan en un máximo de 30 días. La comunicación de soporte y el comprobante de atención pueden conservarse hasta 12 meses.</p></div><div><b>Proveedores de pago</b><span>Política externa</span><p>King Damas elimina sus referencias locales. Google Play, App Store o PayPal pueden conservar sus propios registros durante los plazos legales indicados en sus políticas.</p></div></div>
+      <aside class="legal-note"><b>Las suscripciones se cancelan por separado</b><p>Eliminar la cuenta de King Damas no cancela automáticamente una suscripción móvil. Cancélala primero desde Google Play o App Store para impedir renovaciones futuras.</p></aside>
+    </section>
+    <section><h2>8. Conservación y seguridad</h2><p>Conservamos la información mientras la cuenta esté activa. Al confirmar la eliminación en la aplicación, los datos de la cuenta se eliminan inmediatamente de la base activa y las partidas finalizadas se anonimizan. Las solicitudes enviadas por correo se completan en un máximo de 30 días y su comunicación puede conservarse hasta 12 meses para documentar la atención. Si una obligación legal exige un plazo distinto, conservaremos únicamente la información mínima durante el periodo obligatorio. Aplicamos controles técnicos y organizativos para protegerla, aunque ningún sistema conectado a internet puede garantizar riesgo cero.</p></section>
     <section><h2>9. Privacidad de menores</h2><p>King Damas está recomendado para personas de 13 años o más. Las personas menores de la edad legal aplicable deben utilizar la plataforma con autorización y supervisión de su padre, madre o tutor. Un responsable puede escribirnos para solicitar la revisión o eliminación de información de un menor.</p></section>
     <section><h2>10. Marco, vigencia y cambios</h2><p>Esta política está vigente desde el 13 de agosto de 2026 y toma como referencia la protección de datos aplicable en la República Dominicana, incluida la <a href="https://presidencia.gob.do/sites/default/files/statics/transparencia/marco-legal/leyes/Ley-172-13.pdf" target="_blank" rel="noreferrer">Ley 172-13 sobre Protección de Datos Personales ↗</a>. Publicaremos aquí cualquier actualización e informaremos los cambios relevantes cuando corresponda.</p></section>`;
 }
@@ -2312,6 +2312,12 @@ function renderLegalPage(path: LegalPath) {
     : publicPageLayout(content);
   bindNavigation();
   if (!currentUser) bindAuthDialog();
+  const sectionId = location.hash.replace(/^#/, "");
+  if (sectionId && !sectionId.startsWith("/")) {
+    window.requestAnimationFrame(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ block: "start" });
+    });
+  }
 }
 
 function communityPlayerMarkup(
