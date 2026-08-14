@@ -294,7 +294,6 @@ const english = new Map<string, string>([
   ["Apoyo pequeño", "Small support"],
   ["Apoyo mediano", "Medium support"],
   ["Apoyo grande", "Large support"],
-  ["Apoyo campeón", "Champion support"],
   ["Apoyo", "Support"],
   ["Opciones de apoyo", "Support options"],
   ["Pendiente en App Store", "Pending in the App Store"],

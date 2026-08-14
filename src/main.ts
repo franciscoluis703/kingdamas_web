@@ -202,7 +202,6 @@ const REQUIRED_NATIVE_STORE_CATALOG: AppStoreConfig["products"] = {
     { productId: "support.small", tier: "small" },
     { productId: "com.kingdamas.app.support.medium", tier: "medium" },
     { productId: "support.large", tier: "large" },
-    { productId: "support.champion", tier: "champion" },
   ],
   adFree: [
     { productId: "com.kingdamas.app.noads.subscription.weekly", interval: "weekly", period: "P1W" },
@@ -1666,7 +1665,6 @@ function donationMarkup(config: Awaited<ReturnType<typeof api.donationConfig>>) 
     small: "Apoyo pequeño",
     medium: "Apoyo mediano",
     large: "Apoyo grande",
-    champion: "Apoyo campeón",
   };
   return `
     <section class="page-heading donation-heading">
@@ -1744,7 +1742,6 @@ function iosSupportMarkup(
     small: "Apoyo pequeño",
     medium: "Apoyo mediano",
     large: "Apoyo grande",
-    champion: "Apoyo campeón",
   };
   const supportProducts = nativeStoreCatalog(config.products.support, products);
   return `

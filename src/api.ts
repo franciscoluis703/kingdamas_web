@@ -34,7 +34,7 @@ export interface AppStoreConfig {
   products: {
     support: Array<{
       productId: string;
-      tier: "small" | "medium" | "large" | "champion";
+      tier: "small" | "medium" | "large";
       referenceName?: string;
       price?: number;
       currency?: string;

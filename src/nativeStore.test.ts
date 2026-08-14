@@ -7,7 +7,6 @@ describe("catálogo de la tienda móvil", () => {
       { productId: "support.small", tier: "small" },
       { productId: "support.medium", tier: "medium" },
       { productId: "support.large", tier: "large" },
-      { productId: "support.champion", tier: "champion" },
     ] as const;
     const available: NativeStoreProduct[] = [{
       id: "support.small",
@@ -21,7 +20,7 @@ describe("catálogo de la tienda móvil", () => {
 
     const catalog = nativeStoreCatalog(configured, available);
 
-    expect(catalog).toHaveLength(4);
+    expect(catalog).toHaveLength(3);
     expect(catalog[0]?.product?.displayPrice).toBe("$2.99");
     expect(catalog.slice(1).every((item) => item.product === null)).toBe(true);
   });
