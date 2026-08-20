@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BoardState, Piece } from "../types";
-import { applyMove, destination, findAppliedMove, getLegalMoves, playableNumber } from "./engine";
+import { applyMove, countMovesWithoutCapture, destination, findAppliedMove, getLegalMoves, getWinner, playableNumber } from "./engine";
 import { chooseLegendMove } from "./legendAi";
 import { LEGENDS } from "./legends";
 
@@ -75,6 +75,57 @@ describe("motor 10×10 del cliente", () => {
     expect(playableNumber(0, 1)).toBe(1);
     expect(playableNumber(9, 8)).toBe(50);
     expect(playableNumber(0, 0)).toBeNull();
+  });
+
+  it("declara tablas tras 10 jugadas sin captura cuando ambos tienen menos de 3 fichas", () => {
+    const board = emptyBoard();
+    board[2]![1] = { player: "ivory", king: false };
+    board[2]![5] = { player: "ivory", king: false };
+    board[7]![0] = { player: "mahogany", king: false };
+    board[7]![4] = { player: "mahogany", king: false };
+    const moves = Array.from({ length: 10 }, () => ({ captures: 0 }));
+
+    expect(getWinner(board, "ivory", moves)).toBe("draw");
+  });
+
+  it("mantiene activa la partida antes de completar 10 jugadas sin captura", () => {
+    const board = emptyBoard();
+    board[2]![1] = { player: "ivory", king: false };
+    board[2]![5] = { player: "ivory", king: false };
+    board[7]![0] = { player: "mahogany", king: false };
+    board[7]![4] = { player: "mahogany", king: false };
+    const moves = Array.from({ length: 9 }, () => ({ captures: 0 }));
+
+    expect(getWinner(board, "ivory", moves)).toBeNull();
+  });
+
+  it("no declara tablas si alguno conserva 3 fichas", () => {
+    const board = emptyBoard();
+    board[2]![1] = { player: "ivory", king: false };
+    board[2]![3] = { player: "ivory", king: false };
+    board[2]![5] = { player: "ivory", king: false };
+    board[7]![0] = { player: "mahogany", king: false };
+    board[7]![4] = { player: "mahogany", king: false };
+    const moves = Array.from({ length: 10 }, () => ({ captures: 0 }));
+
+    expect(getWinner(board, "ivory", moves)).toBeNull();
+  });
+
+  it("reinicia el conteo de jugadas cuando ocurre una captura", () => {
+    const moves = [
+      ...Array.from({ length: 10 }, () => ({ captures: 0 })),
+      { captures: 1 },
+      ...Array.from({ length: 4 }, () => ({ captures: 0 })),
+    ];
+
+    expect(countMovesWithoutCapture(moves)).toBe(4);
+  });
+
+  it("prioriza la victoria si un jugador ya no tiene fichas", () => {
+    const board = emptyBoard();
+    board[7]![0] = { player: "mahogany", king: false };
+
+    expect(getWinner(board, "ivory")).toBe("mahogany");
   });
 
   it("cada leyenda siempre elige una jugada legal", () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DEFAULT_PIECE_COLOR_PREFERENCES,
+  crownColorForPiece,
   normalizePieceColorPreferences,
   pieceColorPreferencesForSide,
   pieceColorsFor,
@@ -44,5 +45,19 @@ describe("preferencias de color de las fichas", () => {
       own: "negra",
       opponent: "blanca",
     });
+  });
+
+  it("usa una corona blanca sobre fichas negras", () => {
+    expect(crownColorForPiece("negra")).toBe("#ffffff");
+    expect(crownColorForPiece("#121b17")).toBe("#ffffff");
+  });
+
+  it("usa una corona negra sobre fichas blancas", () => {
+    expect(crownColorForPiece("blanca")).toBe("#000000");
+    expect(crownColorForPiece("#edf2e8")).toBe("#000000");
+  });
+
+  it("conserva la corona amarilla para los demás colores configurables", () => {
+    expect(crownColorForPiece("rojo")).toBe("#e8b85a");
   });
 });

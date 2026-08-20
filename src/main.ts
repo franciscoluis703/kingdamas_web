@@ -365,7 +365,7 @@ function headerNotificationListMarkup() {
       const { invitation } = item;
       return `<button class="notification-item" type="button" data-notification-challenge="${escapeHtml(invitation.id)}">
         ${avatarMarkup(invitation.opponent, "avatar avatar--notification")}
-        <span><small>DESAFÍO PENDIENTE</small><b>@${escapeHtml(invitation.opponent.username)} te desafía</b><em>10 × 10 · ${invitation.timeControlMinutes} min por jugador</em></span>
+        <span><small>DESAFÍO PENDIENTE</small><b>@${escapeHtml(invitation.opponent.username)} ${onlineDotMarkup(invitation.opponent)} te desafía</b><em>10 × 10 · ${invitation.timeControlMinutes} min por jugador</em></span>
         <i aria-hidden="true">→</i>
       </button>`;
     }
@@ -373,7 +373,7 @@ function headerNotificationListMarkup() {
     const unreadLabel = conversation.unreadCount === 1 ? "MENSAJE NUEVO" : "MENSAJES NUEVOS";
     return `<button class="notification-item" type="button" data-notification-message="${escapeHtml(conversation.user.username)}">
       ${avatarMarkup(conversation.user, "avatar avatar--notification")}
-      <span><small>${unreadLabel}</small><b>@${escapeHtml(conversation.user.username)}</b><em translate="no">${escapeHtml(conversation.lastMessage)}</em></span>
+      <span><small>${unreadLabel}</small><b>@${escapeHtml(conversation.user.username)} ${onlineDotMarkup(conversation.user)}</b><em translate="no">${escapeHtml(conversation.lastMessage)}</em></span>
       <i class="notification-item-count">${conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</i>
     </button>`;
   }).join("");
@@ -614,6 +614,7 @@ function bindNavigation() {
   bindProfilePhotoDialog();
   bindAccountDeletionDialog();
   bindLegalConsent();
+  refreshVisiblePresence();
 }
 
 function legalConsentKey() {
@@ -708,6 +709,40 @@ function worldTitleRecognitionMarkup(
   if (!title) return "";
   const trophy = WORLD_TROPHY_DETAILS[title.placement];
   return `<span class="world-title-recognition is-${title.placement} ${extraClass}"><strong>PODIO MUNDIAL VIGENTE</strong><small>${escapeHtml(trophy.podiumLabel)}</small></span>`;
+}
+
+function onlineDotMarkup(player: Pick<User, "id" | "online">) {
+  return `<span class="user-online-dot" data-user-presence="${escapeHtml(player.id)}" role="img" aria-label="En línea" title="En línea" ${player.online ? "" : "hidden"}></span>`;
+}
+
+function applyPresenceUpdate(payload: { userId?: string; online?: boolean }) {
+  const userId = String(payload.userId || "");
+  if (!userId) return;
+  document.querySelectorAll<HTMLElement>("[data-user-presence]").forEach((dot) => {
+    if (dot.dataset.userPresence === userId) dot.hidden = !payload.online;
+  });
+}
+
+function refreshVisiblePresence() {
+  if (!socket?.connected) return;
+  const userIds = [...new Set(
+    [...document.querySelectorAll<HTMLElement>("[data-user-presence]")]
+      .map((dot) => dot.dataset.userPresence || "")
+      .filter(Boolean),
+  )].slice(0, 100);
+  if (!userIds.length) return;
+  socket.emit(
+    "presence:query",
+    userIds,
+    (response?: { onlineUserIds?: string[] }) => {
+      const onlineIds = new Set(
+        (response?.onlineUserIds || []).map((userId) => String(userId)),
+      );
+      userIds.forEach((userId) => {
+        applyPresenceUpdate({ userId, online: onlineIds.has(userId) });
+      });
+    },
+  );
 }
 
 function playerProfileButton(
@@ -2189,7 +2224,7 @@ function howToPlayMarkup() {
       <section><span class="how-to-step">02</span><div><h2>Movimiento de una ficha</h2><p>Una ficha normal avanza una casilla en diagonal hacia una casilla oscura libre. Durante una captura puede saltar piezas rivales tanto hacia delante como hacia atrás.</p></div></section>
       <section><span class="how-to-step">03</span><div><h2>La captura es obligatoria</h2><p>Si existe una captura, debes realizarla. Cuando hay varias alternativas se elige la secuencia que captura más fichas; si dos secuencias capturan la misma cantidad, tiene prioridad la que captura más damas. Una misma jugada puede encadenar varios saltos.</p></div></section>
       <section><span class="how-to-step">04</span><div><h2>Coronación y dama voladora</h2><p>Cuando una ficha alcanza la última fila se convierte en dama. La dama puede desplazarse varias casillas libres por una diagonal y capturar a distancia, aterrizando en una casilla libre situada después de la pieza rival.</p></div></section>
-      <section><span class="how-to-step">05</span><div><h2>Reloj y final de partida</h2><p>King Damas ofrece controles de 10, 30 y 60 minutos por jugador. También puedes ganar por tiempo o por rendición; las tablas pueden acordarse durante una partida disponible.</p></div></section>
+      <section><span class="how-to-step">05</span><div><h2>Reloj y final de partida</h2><p>King Damas ofrece controles de 10, 30 y 60 minutos por jugador. También puedes ganar por tiempo o por rendición; las tablas pueden acordarse o declararse automáticamente cuando cada jugador tiene menos de 3 fichas y transcurren 10 jugadas consecutivas sin captura.</p></div></section>
       <section class="how-to-modes"><div><span class="section-kicker">PRACTICA A TU MANERA</span><h2>Tres formas de entrar al tablero</h2></div><div><article><b>Camino de Leyendas</b><p>Entrena contra rivales virtuales de dificultad progresiva sin afectar tu Elo.</p></article><article><b>Desafiar a un amigo</b><p>Crea un enlace privado y compártelo con la persona que quieras enfrentar.</p></article><article><b>Buscar rival</b><p>Entra al emparejamiento clasificado y compite con jugadores de nivel similar.</p></article></div></section>
       <footer class="how-to-cta"><div><span class="section-kicker">LA MESA ESTÁ LISTA</span><h2>Aprende jugando una partida gratuita</h2></div><button class="button button--primary" type="button" data-open-auth="register">Crear cuenta y jugar</button></footer>
     </article>`;
@@ -2325,14 +2360,17 @@ function communityPlayerMarkup(
   isFriend: boolean,
   placement: "friends" | "discover",
 ) {
-  return `<article class="community-player">
-    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--community")}<span class="community-player-copy"><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--compact")}</span>`, "community-player-profile")}
+  const isSelf = player.id === currentUser?.id;
+  return `<article class="community-player ${isSelf ? "is-me" : ""}">
+    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--community")}<span class="community-player-copy"><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player)}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--compact")}</span>`, "community-player-profile")}
     ${player.rating !== undefined ? `<strong>${player.rating.toLocaleString(localeCode())}<small>Elo</small></strong>` : ""}
     <div class="community-player-actions">
-      <button type="button" data-open-conversation="${escapeHtml(player.username)}" aria-label="Enviar mensaje a ${escapeHtml(player.name)}" title="Mensaje">${icon("chat")}</button>
-      ${placement === "friends"
-        ? `<button class="is-danger" type="button" data-remove-friend="${escapeHtml(player.username)}" aria-label="Eliminar a ${escapeHtml(player.name)} de tus amigos" title="Eliminar de amigos">×</button>`
-        : `<button class="add-player ${isFriend ? "is-added" : ""}" type="button" ${isFriend ? "disabled" : `data-add-friend="${escapeHtml(player.username)}"`} aria-label="${isFriend ? "Ya está en tus amigos" : `Agregar a ${escapeHtml(player.name)}`}" title="${isFriend ? "Ya agregado" : "Agregar amigo"}">${isFriend ? "✓" : icon("userPlus")}</button>`}
+      ${isSelf
+        ? `<span class="community-player-self">Tú</span>`
+        : `<button type="button" data-open-conversation="${escapeHtml(player.username)}" aria-label="Enviar mensaje a ${escapeHtml(player.name)}" title="Mensaje">${icon("chat")}</button>
+          ${placement === "friends"
+            ? `<button class="is-danger" type="button" data-remove-friend="${escapeHtml(player.username)}" aria-label="Eliminar a ${escapeHtml(player.name)} de tus amigos" title="Eliminar de amigos">×</button>`
+            : `<button class="add-player ${isFriend ? "is-added" : ""}" type="button" ${isFriend ? "disabled" : `data-add-friend="${escapeHtml(player.username)}"`} aria-label="${isFriend ? "Ya está en tus amigos" : `Agregar a ${escapeHtml(player.name)}`}" title="${isFriend ? "Ya agregado" : "Agregar amigo"}">${isFriend ? "✓" : icon("userPlus")}</button>`}`}
     </div>
   </article>`;
 }
@@ -2343,7 +2381,7 @@ function communityConversationMarkup(conversation: DirectConversation) {
     month: "short",
   });
   return `<article class="conversation-row">
-    ${playerProfileButton(conversation.user, `${avatarMarkup(conversation.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b>${escapeHtml(conversation.user.name)}</b>${worldTrophyMarkup(conversation.user)}</span><small>@${escapeHtml(conversation.user.username)}</small>${worldTitleRecognitionMarkup(conversation.user, "world-title-recognition--compact")}</span>`, "conversation-player-profile")}
+    ${playerProfileButton(conversation.user, `${avatarMarkup(conversation.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b>${escapeHtml(conversation.user.name)}</b>${onlineDotMarkup(conversation.user)}${worldTrophyMarkup(conversation.user)}</span><small>@${escapeHtml(conversation.user.username)}</small>${worldTitleRecognitionMarkup(conversation.user, "world-title-recognition--compact")}</span>`, "conversation-player-profile")}
     <time>${escapeHtml(when)}</time>
     <button class="conversation-preview" type="button" data-open-conversation="${escapeHtml(conversation.user.username)}" aria-label="Abrir conversación con ${escapeHtml(conversation.user.name)}"><span>${icon("chat")}</span>${conversation.lastMessageOwn ? "Tú: " : ""}<span class="conversation-preview-message" translate="no">${escapeHtml(conversation.lastMessage)}</span></button>
     ${conversation.unreadCount ? `<i>${conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}</i>` : ""}
@@ -2374,7 +2412,6 @@ function communityMarkup(
   },
 ) {
   const friendNames = new Set(friends.map((friend) => friend.username));
-  const visibleDiscovery = discovery.filter((player) => player.id !== currentUser?.id);
   return `
     <section class="page-heading community-heading">
       <div><span class="eyebrow"><i></i>JUGADORES DE KING DAMAS</span><h1>Comunidad</h1><span class="community-registered-count" aria-label="${registeredUsers.toLocaleString(localeCode())} usuarios registrados"><b>${registeredUsers.toLocaleString(localeCode())}</b></span><p>Encuentra rivales, crea tu círculo y mantén la conversación fuera del tablero.</p></div>
@@ -2392,7 +2429,7 @@ function communityMarkup(
       <section class="panel community-panel community-discover">
         <div class="community-panel-heading"><span><small data-discovery-kicker>CLASIFICACIÓN MUNDIAL</small><h2 data-discovery-title>Descubrir jugadores</h2></span><span class="community-live"><i></i>Activa</span></div>
         <div class="community-player-list" data-discovery-list>
-          ${visibleDiscovery.length ? visibleDiscovery.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("") : `<div class="community-empty"><span>${icon("search")}</span><b>No hay jugadores para mostrar</b><p>Usa la búsqueda para encontrar a alguien.</p></div>`}
+          ${discovery.length ? discovery.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("") : `<div class="community-empty"><span>${icon("search")}</span><b>No hay jugadores para mostrar</b><p>Usa la búsqueda para encontrar a alguien.</p></div>`}
           ${communityListMoreMarkup("discovery", pagination.discoveryHasMore)}
         </div>
       </section>
@@ -2580,9 +2617,8 @@ function bindCommunity(
     visibleDiscovery = players;
     discoverySearching = searching;
     players.forEach((player) => knownPlayers.set(player.username, player));
-    const visible = players.filter((player) => player.id !== currentUser?.id);
-    discoveryList.innerHTML = visible.length
-      ? `${visible.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("")}${communityListMoreMarkup("discovery", searching ? discoverySearchHasMore : discoveryHasMore)}`
+    discoveryList.innerHTML = players.length
+      ? `${players.map((player) => communityPlayerMarkup(player, friendNames.has(player.username), "discover")).join("")}${communityListMoreMarkup("discovery", searching ? discoverySearchHasMore : discoveryHasMore)}`
       : `<div class="community-empty"><span>${icon("search")}</span><b>No encontramos jugadores</b><p>Prueba con otro nombre o usuario.</p></div>`;
     if (discoveryTitle) discoveryTitle.textContent = searching ? "Resultados" : "Descubrir jugadores";
     if (discoveryKicker) discoveryKicker.textContent = searching ? "BÚSQUEDA DE JUGADORES" : "CLASIFICACIÓN MUNDIAL";
@@ -2753,7 +2789,7 @@ function bindCommunity(
     try {
       const response = await api.directMessages(activeUsername);
       if (!dialog.open || response.user.username !== activeUsername) return;
-      if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b id="direct-chat-name">${escapeHtml(response.user.name)}</b>${worldTrophyMarkup(response.user)}</span><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small>${worldTitleRecognitionMarkup(response.user, "world-title-recognition--compact")}</span>`, "direct-chat-player-profile");
+      if (directUser) directUser.innerHTML = playerProfileButton(response.user, `${avatarMarkup(response.user, "avatar avatar--community")}<span><span class="player-name-with-title"><b id="direct-chat-name">${escapeHtml(response.user.name)}</b>${onlineDotMarkup(response.user)}${worldTrophyMarkup(response.user)}</span><small>${flag(response.user.countryCode)} @${escapeHtml(response.user.username)}</small>${worldTitleRecognitionMarkup(response.user, "world-title-recognition--compact")}</span>`, "direct-chat-player-profile");
       activeMessages = response.messages;
       activeMessageOffset = response.nextOffset;
       activeMessagesHaveMore = response.hasMore;
@@ -2918,7 +2954,7 @@ function tournamentParticipantCards(participants: TournamentParticipant[]) {
   }
   return participants.map((participant) => `<button class="tournament-participant-card" type="button" data-player-profile-link="${escapeHtml(participant.username)}" aria-label="Ver perfil de ${escapeHtml(participant.name)}">
     ${avatarMarkup(participant, "avatar avatar--tournament")}
-    <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small>${worldTitleRecognitionMarkup(participant, "world-title-recognition--compact")}<em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
+    <span><span class="tournament-participant-name"><b>${escapeHtml(participant.name)}</b>${onlineDotMarkup(participant)}${worldTrophyMarkup(participant)}</span><small>${flag(participant.countryCode)} @${escapeHtml(participant.username)}</small>${worldTitleRecognitionMarkup(participant, "world-title-recognition--compact")}<em class="elo-tier-badge">${escapeHtml(participant.tier ?? eloTier(participant.rating))}</em></span>
     <strong>${participant.rating.toLocaleString(localeCode())}<small>Elo Damas</small></strong>
     <i aria-hidden="true">→</i>
   </button>`).join("");
@@ -2937,7 +2973,7 @@ function tournamentPlayerProfileMarkup(
     <button class="tournament-profile-back" type="button" data-back-participants>← ${escapeHtml(backLabel)}</button>
     <div class="tournament-profile-hero">
       ${avatarMarkup(profile, "avatar avatar--tournament-profile")}
-      <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">PODIO MUNDIAL VIGENTE · ${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].podiumLabel)}</strong>` : ""}</span>
+      <span><small>PERFIL COMPETITIVO</small><h3><span>${escapeHtml(profile.name)}</span>${onlineDotMarkup(profile)}${worldTrophyMarkup(profile, "world-trophy--profile")}</h3><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p><em class="elo-tier-badge">${escapeHtml(mode?.tier ?? eloTier(mode?.rating ?? 1200))}</em>${profile.worldTitle ? `<strong class="world-profile-title">PODIO MUNDIAL VIGENTE · ${escapeHtml(WORLD_TROPHY_DETAILS[profile.worldTitle.placement].podiumLabel)}</strong>` : ""}</span>
       ${!profile.isSelf ? `<button class="button ${profile.isFollowing ? "button--quiet" : "button--primary"} button--small" type="button" data-follow-tournament-player="${escapeHtml(profile.username)}" ${profile.isFollowing ? "disabled" : ""}>${profile.isFollowing ? "✓ En tus amigos" : `${icon("userPlus")} Agregar amigo`}</button>` : `<span class="tournament-own-profile">Tu perfil</span>`}
     </div>
     <div class="tournament-profile-rating"><span><small>Elo Damas</small><b>${mode?.rating?.toLocaleString(localeCode()) ?? (1200).toLocaleString(localeCode())}</b></span><span><small>Mejor Elo</small><b>${mode?.peakRating?.toLocaleString(localeCode()) ?? mode?.rating?.toLocaleString(localeCode()) ?? (1200).toLocaleString(localeCode())}</b></span><span><small>Ranking mundial</small><b>${mode?.worldPosition ? `#${mode.worldPosition}` : "—"}</b></span><span><small>Ranking nacional</small><b>${mode?.countryPosition ? `#${mode.countryPosition}` : "—"}</b></span></div>
@@ -2950,7 +2986,7 @@ function playerMatchEndLabel(match: PlayerMatchHistoryEntry) {
   if (match.result === "draw") {
     return match.endReason === "agreement"
       ? "Tablas por acuerdo"
-      : "La partida terminó en tablas";
+      : "Tablas automáticas: ambos jugadores tienen menos de 3 fichas y completaron 10 jugadas consecutivas sin captura.";
   }
   if (match.endReason === "timeout") {
     return match.result === "win"
@@ -3046,7 +3082,7 @@ function playerProfilePageMarkup(
     : null;
   return `
     <section class="page-heading player-profile-heading">
-      <div><button class="text-button" type="button" data-route="/comunidad">← Comunidad</button><span class="eyebrow"><i></i>PERFIL DE JUGADOR</span><h1 class="profile-heading-name"><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--heading")}</h1><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)} · Damas internacionales 10×10</p></div>
+      <div><button class="text-button" type="button" data-route="/comunidad">← Comunidad</button><span class="eyebrow"><i></i>PERFIL DE JUGADOR</span><h1 class="profile-heading-name"><span>${escapeHtml(profile.name)}</span>${onlineDotMarkup(profile)}${worldTrophyMarkup(profile, "world-trophy--heading")}</h1><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)} · Damas internacionales 10×10</p></div>
       ${profile.isSelf
         ? `<button class="button button--quiet" type="button" data-open-profile-photo>${icon("camera")} Cambiar foto</button>`
         : `<div class="player-profile-actions">
@@ -3060,7 +3096,7 @@ function playerProfilePageMarkup(
     <section class="panel player-profile-card">
       <div class="player-profile-hero">
         ${avatarMarkup(profile, "avatar avatar--public-profile")}
-        <div><small>${escapeHtml(mode?.tier ?? eloTier(rating))}</small><h2><span>${escapeHtml(profile.name)}</span>${worldTrophyMarkup(profile, "world-trophy--public-profile")}</h2><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p></div>
+        <div><small>${escapeHtml(mode?.tier ?? eloTier(rating))}</small><h2><span>${escapeHtml(profile.name)}</span>${onlineDotMarkup(profile)}${worldTrophyMarkup(profile, "world-trophy--public-profile")}</h2><p>${flag(profile.countryCode)} @${escapeHtml(profile.username)}</p></div>
         <div class="player-profile-followers"><button type="button" data-view-followers aria-label="Ver quién sigue a @${escapeHtml(profile.username)}"><b>${profile.followerCount}</b><small>Seguidores <i aria-hidden="true">→</i></small></button><button type="button" data-view-following aria-label="Ver a quién sigue @${escapeHtml(profile.username)}"><b>${profile.followingCount}</b><small>Siguiendo <i aria-hidden="true">→</i></small></button></div>
       </div>
       ${title ? `<div class="player-world-title is-${profile.worldTitle?.placement}">${worldTrophyMarkup(profile, "world-trophy--profile-banner")}<span><small>PODIO MUNDIAL VIGENTE</small><b>${escapeHtml(title.label)}</b><p>Trofeo oficial y pase directo al próximo Campeonato Mundial.</p></span></div>` : ""}
@@ -3087,7 +3123,7 @@ function profileSocialListMarkup(
   }
   const profiles = users.map((user) => `<button class="profile-following-player" type="button" data-player-profile-link="${escapeHtml(user.username)}" aria-label="Ver perfil de ${escapeHtml(user.name)}">
     ${avatarMarkup(user, "avatar avatar--profile-following")}
-    <span><span class="player-name-with-title"><b>${escapeHtml(user.name)}</b>${worldTrophyMarkup(user)}</span><small>${flag(user.countryCode)} @${escapeHtml(user.username)}</small>${worldTitleRecognitionMarkup(user, "world-title-recognition--compact")}</span>
+    <span><span class="player-name-with-title"><b>${escapeHtml(user.name)}</b>${onlineDotMarkup(user)}${worldTrophyMarkup(user)}</span><small>${flag(user.countryCode)} @${escapeHtml(user.username)}</small>${worldTitleRecognitionMarkup(user, "world-title-recognition--compact")}</span>
     <i aria-hidden="true">→</i>
   </button>`).join("");
   return `${profiles}${hasMore ? `<div class="profile-following-more"><button class="button button--quiet button--small" type="button" data-view-more-social>Ver más</button><small>Se cargarán ${LIST_PAGE_SIZE} perfiles adicionales.</small></div>` : ""}`;
@@ -3273,7 +3309,7 @@ function qualifierBracketPlayerMarkup(
   const winner = match.winnerId === player.id;
   return playerProfileButton(player, `
     ${avatarMarkup(player, "avatar avatar--bracket")}
-    <span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString(localeCode())}</small></span>
+    <span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${player.rating.toLocaleString(localeCode())}</small></span>
     ${winner ? "<i>✓</i>" : ""}
   `, `qualifier-bracket-player ${winner ? "is-winner" : ""}`);
 }
@@ -3288,7 +3324,7 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
       : viewer.participant.state === "eliminated"
         ? `<div class="qualifier-viewer-match is-eliminated"><span>×</span><p><small>RESULTADO FINAL</small><b>Participación finalizada</b><em>El cuadro registra ${viewer.participant.losses} derrotas.</em></p></div>`
         : viewer.opponent
-          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><span class="player-name-with-title"><b>${escapeHtml(viewer.opponent.name)}</b>${worldTrophyMarkup(viewer.opponent)}</span><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString(localeCode())} Elo Damas</em>${worldTitleRecognitionMarkup(viewer.opponent, "world-title-recognition--compact")}</p>`, "qualifier-viewer-opponent")}</div>`
+          ? `<div class="qualifier-viewer-match">${playerProfileButton(viewer.opponent, `${avatarMarkup(viewer.opponent, "avatar avatar--bracket-opponent")}<p><small>TU PRÓXIMO RIVAL · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "FECHA POR CONFIRMAR"}</small><span class="player-name-with-title"><b>${escapeHtml(viewer.opponent.name)}</b>${onlineDotMarkup(viewer.opponent)}${worldTrophyMarkup(viewer.opponent)}</span><em>${flag(viewer.opponent.countryCode)} @${escapeHtml(viewer.opponent.username)} · ${viewer.opponent.rating.toLocaleString(localeCode())} Elo Damas</em>${worldTitleRecognitionMarkup(viewer.opponent, "world-title-recognition--compact")}</p>`, "qualifier-viewer-opponent")}</div>`
           : `<div class="qualifier-viewer-match is-waiting"><span>…</span><p><small>TU PRIMER CRUCE · ${viewer.scheduledAt ? qualifierMatchDate(viewer.scheduledAt) : "26 JUN 2027"}</small><b>Rival por confirmar</b><em>Quedarás emparejado con el próximo jugador disponible de tu país.</em></p></div>`;
   const qualifierSlots = Array.from({ length: bracket.rules.qualifyingPlaces }, (_, index) => bracket.qualifiers[index] || null);
   const stateLabels = {
@@ -3304,13 +3340,13 @@ function qualifierBracketMarkup(bracket: QualifierBracketResponse) {
     <div class="qualifier-bracket-facts"><span><b>${bracket.rules.qualifyingPlaces}</b><small>Cupos al Mundial</small></span><span><b>${bracket.rules.lossesToEliminate}</b><small>Derrotas eliminan</small></span><span><b>${bracket.rules.timeControlMinutes}</b><small>Minutos por jugador</small></span><span><b>${bracket.participants.length}</b><small>Inscritos del país</small></span></div>
     ${viewerCallout}
     <section class="qualifier-final-slots"><header><span><small>META DEL CUADRO</small><h3>Los tres clasificados</h3></span><p>Solo estos tres puestos avanzan al Campeonato Mundial.</p></header><div>${qualifierSlots.map((player, index) => player
-      ? `<span class="is-filled"><i>${index + 1}</i>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--qualifier-slot")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)}</small></p>`, "qualifier-slot-profile")}<em>CLASIFICADO</em></span>`
+      ? `<span class="is-filled"><i>${index + 1}</i>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--qualifier-slot")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)}</small></p>`, "qualifier-slot-profile")}<em>CLASIFICADO</em></span>`
       : `<span><i>${index + 1}</i><div class="qualifier-slot-pending">?</div><p><b>Cupo por definir</b><small>Avanza un sobreviviente</small></p></span>`).join("")}</div></section>
     <section class="qualifier-calendar"><header><span><small>CALENDARIO OFICIAL</small><h3>Fechas de ronda</h3></span><p>El cuadro se actualiza automáticamente después de completar cada ronda.</p></header><div>${bracket.calendar.map((entry) => `<span class="${bracket.rounds.some((round) => round.round === entry.round) ? "has-matches" : ""}"><small>R${entry.round}</small><b>${qualifierMatchDate(entry.scheduledAt).replace(/ de /g, " ")}</b></span>`).join("")}</div></section>
     <section class="qualifier-rounds"><header><span><small>ENFRENTAMIENTOS</small><h3>${bracket.tournament.status === "open" ? "Primera ronda provisional" : "Cuadro en vivo"}</h3></span><p>${bracket.tournament.status === "open" ? "Los pares se asignan por orden de inscripción; el último jugador sin pareja espera la siguiente inscripción." : "Los ganadores continúan y dos derrotas eliminan."}</p></header>
       <div class="qualifier-round-columns">${bracket.rounds.length ? bracket.rounds.map((round) => `<article class="qualifier-round-column"><header><span><small>RONDA ${round.round}</small><b>${qualifierMatchDate(round.scheduledAt)}</b></span><em class="is-${round.status}">${round.status === "in_progress" ? "En juego" : round.status === "completed" ? "Completada" : "Programada"}</em></header><div>${round.matches.map((match) => `<article class="qualifier-match ${match.status === "pending_opponent" ? "is-pending" : ""}">${qualifierBracketPlayerMarkup(match.ivory, match)}<i>VS</i>${qualifierBracketPlayerMarkup(match.mahogany, match)}<footer>${match.provisional ? "Cruce reservado por inscripción" : match.status === "active" ? "Partida disponible" : match.status === "completed" ? "Resultado confirmado" : "Partida cerrada"}</footer></article>`).join("")}</div></article>`).join("") : `<div class="qualifier-bracket-empty"><span>${icon("users")}</span><b>Esperando jugadores de ${flag(countryCode)} ${escapeHtml(countryCode)}</b><p>El primer cruce aparecerá cuando se confirme una inscripción.</p></div>`}</div>
     </section>
-    <section class="qualifier-participant-status"><header><span><small>ESTADO DEL PAÍS</small><h3>Jugadores en ruta</h3></span></header><div>${bracket.participants.length ? bracket.participants.map((player) => `<span>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--bracket-status")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${escapeHtml(player.tier)}</small></p>`, "qualifier-status-profile")}<strong>${player.losses}<small>derrotas</small></strong><em class="is-${player.state}">${stateLabels[player.state]}</em></span>`).join("") : `<p class="qualifier-status-empty">Todavía no hay jugadores inscritos en este país.</p>`}</div></section>
+    <section class="qualifier-participant-status"><header><span><small>ESTADO DEL PAÍS</small><h3>Jugadores en ruta</h3></span></header><div>${bracket.participants.length ? bracket.participants.map((player) => `<span>${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--bracket-status")}<p><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player)}</span><small>@${escapeHtml(player.username)} · ${escapeHtml(player.tier)}</small></p>`, "qualifier-status-profile")}<strong>${player.losses}<small>derrotas</small></strong><em class="is-${player.state}">${stateLabels[player.state]}</em></span>`).join("") : `<p class="qualifier-status-empty">Todavía no hay jugadores inscritos en este país.</p>`}</div></section>
     <p class="qualifier-bracket-note">Los cruces son nacionales y dinámicos. Si una ronda tiene un número impar de jugadores, uno descansa; el sistema rota ese descanso y evita repetir rivales cuando existe otra pareja disponible.</p>`;
 }
 
@@ -3323,7 +3359,7 @@ function worldTitleHoldersMarkup(world: WorldChampionshipResponse) {
     <div>${holders.map((holder) => `<button class="world-title-holder is-${holder.worldTitle.placement}" type="button" data-player-profile-link="${escapeHtml(holder.username)}" aria-label="Ver perfil de ${escapeHtml(holder.name)}">
       ${worldTrophyMarkup(holder, "world-trophy--podium")}
       ${avatarMarkup(holder, "avatar avatar--world-holder")}
-      <span><small>${placeLabel[holder.worldTitle.placement]}</small><b>${escapeHtml(holder.name)}</b><em>${flag(holder.countryCode)} @${escapeHtml(holder.username)}</em></span>
+      <span><small>${placeLabel[holder.worldTitle.placement]}</small><b>${escapeHtml(holder.name)} ${onlineDotMarkup(holder)}</b><em>${flag(holder.countryCode)} @${escapeHtml(holder.username)}</em></span>
       <strong>✓ PASE DIRECTO</strong><i aria-hidden="true">›</i>
     </button>`).join("")}</div>
   </section>`;
@@ -3721,7 +3757,7 @@ function removeOutgoingChallengeDialog() {
 }
 
 function openProfileChallenge(
-  player: Pick<User, "name" | "username" | "avatarUrl" | "worldTitle">,
+  player: Pick<User, "id" | "name" | "username" | "avatarUrl" | "worldTitle" | "online">,
 ) {
   if (outgoingChallengeDialog) {
     outgoingChallengeDialog.focus();
@@ -3742,7 +3778,7 @@ function openProfileChallenge(
     <p>Elige el tiempo de cada jugador. La invitación estará disponible durante 15 minutos.</p>
     <div class="direct-challenge-player">
       ${avatarMarkup(player, "avatar avatar--invite-preview")}
-      <span><small>TU RIVAL</small><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player)}</span><em>@${escapeHtml(player.username)}</em></span>
+      <span><small>TU RIVAL</small><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player)}</span><em>@${escapeHtml(player.username)}</em></span>
     </div>
     <div class="direct-challenge-times" role="radiogroup" aria-label="Tiempo por jugador">
       ${TIME_CONTROLS.map((minutes) => `<button class="${minutes === timeControl ? "is-selected" : ""}" type="button" role="radio" aria-checked="${minutes === timeControl}" data-direct-challenge-time="${minutes}"><b>${minutes}</b><small>minutos</small></button>`).join("")}
@@ -3888,7 +3924,7 @@ function showIncomingChallenge(invitation: DirectInvitation) {
     <p>¿Aceptas enfrentarte a ${escapeHtml(challenger.name)} en una partida de ${invitation.timeControlMinutes} minutos por jugador?</p>
     <div class="direct-challenge-player">
       ${avatarMarkup(challenger, "avatar avatar--invite-preview")}
-      <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(challenger.name)}</b>${worldTrophyMarkup(challenger)}</span><em>@${escapeHtml(challenger.username)} · ${challenger.rating.toLocaleString(localeCode())} Elo</em></span>
+      <span><small>QUIEN TE DESAFÍA</small><span class="player-name-with-title"><b>${escapeHtml(challenger.name)}</b>${onlineDotMarkup(challenger)}${worldTrophyMarkup(challenger)}</span><em>@${escapeHtml(challenger.username)} · ${challenger.rating.toLocaleString(localeCode())} Elo</em></span>
     </div>
     <div class="incoming-challenge-detail"><span><small>Modalidad</small><b>10 × 10</b></span><span><small>Reloj</small><b>${invitation.timeControlMinutes} min</b></span></div>
     <div class="direct-challenge-status" data-incoming-challenge-status aria-live="polite"></div>
@@ -4245,7 +4281,7 @@ function leaderboardTable(players: LeaderboardPlayer[], compact: boolean) {
     <div class="ranking-head" role="row"><span>Pos.</span><span>Jugador</span><span>Partidas</span><span>V-D-T</span><span>Elo Damas</span></div>
     ${players.map((player) => `<div class="ranking-row ${currentUser?.id === player.id ? "is-me" : ""}" role="row">
       <span class="rank-position ${player.position <= 3 ? "is-top" : ""}">${player.position <= 3 ? ["🥇", "🥈", "🥉"][player.position - 1] : `#${player.position}`}</span>
-      ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--table")}<span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player, "world-trophy--ranking")}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--ranking")}</span>`, "rank-player")}
+      ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--table")}<span><span class="player-name-with-title"><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player, "world-trophy--ranking")}</span><small>${flag(player.countryCode)} @${escapeHtml(player.username)}</small>${worldTitleRecognitionMarkup(player, "world-title-recognition--ranking")}</span>`, "rank-player")}
       <span>${player.gamesPlayed}</span><span>${player.wins}-${player.losses}-${player.draws}</span><strong>${player.rating.toLocaleString(localeCode())}<small>${escapeHtml(player.tier ?? eloTier(player.rating))}</small></strong>
     </div>`).join("")}
   </div>`;
@@ -4451,7 +4487,7 @@ async function renderLegendGame(
     ivory: timeControl * 60_000,
     mahogany: timeControl * 60_000,
   };
-  const moves: Array<{ player: Side; notation: string }> = [];
+  const moves: Array<{ player: Side; notation: string; captures: number }> = [];
   let clockTimer = 0;
   let machineTimer = 0;
   let aiWorker: Worker | null = null;
@@ -4512,7 +4548,7 @@ async function renderLegendGame(
     return true;
   }
 
-  function finish(nextWinner: Side, reason: string) {
+  function finish(nextWinner: Side | null, reason: string) {
     if (status !== "active") return;
     clocks[currentPlayer] = displayedClock(currentPlayer);
     status = "completed";
@@ -4549,12 +4585,12 @@ async function renderLegendGame(
   function playMove(move: LegalMove, player: Side) {
     if (status !== "active" || currentPlayer !== player || !consumeTurnClock()) return;
     position = applyMove(position, move);
-    moves.push({ player, notation: moveNotation(move) });
+    moves.push({ player, notation: moveNotation(move), captures: move.captures });
     playMoveSound(move.captures);
     const nextPlayer = opponentOf(player);
-    const boardWinner = getWinner(position, nextPlayer);
+    const boardWinner = getWinner(position, nextPlayer, moves);
     if (boardWinner) {
-      finish(boardWinner, "board");
+      finish(boardWinner === "draw" ? null : boardWinner, boardWinner === "draw" ? "automatic-draw" : "board");
       return;
     }
     currentPlayer = nextPlayer;
@@ -4638,13 +4674,14 @@ async function renderLegendGame(
       container?.setAttribute("aria-hidden", "true");
       return;
     }
+    const drawn = !winner;
     const humanWon = winner === humanSide;
     const duration = formatDuration(Math.floor((performance.now() - gameStartedAt) / 1000));
     container.innerHTML = `<div class="board-result-card">
-      <span class="result-icon">${humanWon ? "♛" : "·"}</span>
+      <span class="result-icon">${drawn ? "½" : humanWon ? "♛" : "·"}</span>
       <span class="section-kicker">DUELO FINALIZADO</span>
-      <h2>${humanWon ? `Venciste a ${escapeHtml(legend.name)}` : `${escapeHtml(legend.name)} venció`}</h2>
-      <p>${endReason === "timeout" ? "El reloj decidió la partida." : endReason === "resignation" ? "La partida terminó por rendición." : "La posición decidió la partida."}</p>
+      <h2>${drawn ? "Tablas" : humanWon ? `Venciste a ${escapeHtml(legend.name)}` : `${escapeHtml(legend.name)} venció`}</h2>
+      <p>${endReason === "automatic-draw" ? "Tablas automáticas: ambos jugadores tienen menos de 3 fichas y completaron 10 jugadas consecutivas sin captura." : endReason === "timeout" ? "El reloj decidió la partida." : endReason === "resignation" ? "La partida terminó por rendición." : "La posición decidió la partida."}</p>
       <div class="result-summary"><span><small>Jugadas</small><b>${moves.length}</b></span><span><small>Duración</small><b>${duration}</b></span><span><small>Elo</small><b>Sin cambios</b></span></div>
       <div class="result-actions">${humanWon && nextLegend ? `<button class="button button--legend" data-result-next ${nextLegendUnlocked ? "" : "disabled"}>${icon("play")} ${nextLegendUnlocked ? `Siguiente: ${escapeHtml(nextLegend.name)}` : "Guardando victoria…"}</button>` : ""}<button class="button button--outline" data-result-rematch>${icon("refresh")} Revancha</button><button class="button button--quiet" data-result-road>Volver al camino</button></div>
     </div>`;
@@ -4684,7 +4721,7 @@ async function renderLegendGame(
     });
     const label = root.querySelector<HTMLElement>(".game-state-label");
     if (label) label.textContent = status === "completed"
-      ? winner === humanSide ? "Victoria" : "Derrota"
+      ? !winner ? "Tablas" : winner === humanSide ? "Victoria" : "Derrota"
       : currentPlayer === humanSide ? "Tu turno" : thinking ? `${legend.name} está pensando…` : `Turno de ${legend.name}`;
     const machineState = root.querySelector<HTMLElement>("[data-machine-state]");
     if (machineState) machineState.textContent = thinking ? "Pensando" : "Jugando";
@@ -4737,6 +4774,14 @@ async function renderLegendGame(
   };
 }
 
+function livePlayerAvatarMarkup(player: SpectatorGameSummary["players"][Side]) {
+  const avatarUrl = player.avatarUrl || `/api/users/${encodeURIComponent(player.id)}/avatar`;
+  return `<span class="live-player-avatar" data-live-player-avatar>
+    ${avatarMarkup({ ...player, avatarUrl }, "avatar avatar--live")}
+    <span class="avatar avatar--live live-player-avatar-fallback" aria-hidden="true">${icon("user")}</span>
+  </span>`;
+}
+
 function spectatorCardMarkup(game: SpectatorGameSummary) {
   const ivory = game.players.ivory;
   const mahogany = game.players.mahogany;
@@ -4744,9 +4789,9 @@ function spectatorCardMarkup(game: SpectatorGameSummary) {
   return `<article class="live-game-card">
     <header><span class="live-badge"><i></i> EN DIRECTO</span><span>${icon("eye")} <b>${game.spectatorCount}</b></span></header>
     <div class="live-players">
-      ${playerProfileButton(ivory, `${avatarMarkup(ivory, "avatar avatar--live")}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><span class="live-player-name"><b>${escapeHtml(ivory.name)}</b>${worldTrophyMarkup(ivory)}</span><em>${ivory.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}`)}
+      ${playerProfileButton(ivory, `${livePlayerAvatarMarkup(ivory)}<span><small>${flag(ivory.countryCode)} @${escapeHtml(ivory.username)}</small><span class="live-player-name"><b>${escapeHtml(ivory.name)}</b>${onlineDotMarkup(ivory)}${worldTrophyMarkup(ivory)}</span><em>${ivory.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "ivory" ? "is-turn" : ""}`)}
       <span class="live-versus">VS</span>
-      ${playerProfileButton(mahogany, `${avatarMarkup(mahogany, "avatar avatar--live")}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><span class="live-player-name"><b>${escapeHtml(mahogany.name)}</b>${worldTrophyMarkup(mahogany)}</span><em>${mahogany.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}`)}
+      ${playerProfileButton(mahogany, `${livePlayerAvatarMarkup(mahogany)}<span><small>${flag(mahogany.countryCode)} @${escapeHtml(mahogany.username)}</small><span class="live-player-name"><b>${escapeHtml(mahogany.name)}</b>${onlineDotMarkup(mahogany)}${worldTrophyMarkup(mahogany)}</span><em>${mahogany.rating.rating.toLocaleString(localeCode())} Elo Damas</em></span>`, `live-player ${game.currentPlayer === "mahogany" ? "is-turn" : ""}`)}
     </div>
     <div class="live-game-facts"><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Turno</small><b>${escapeHtml(currentName)}</b></span></div>
     <button class="button button--primary" type="button" data-watch-game="${game.id}">${icon("eye")} Ver partida</button>
@@ -4761,6 +4806,17 @@ function liveGamesListMarkup(games: SpectatorGameSummary[]) {
 }
 
 function bindLiveGameCards() {
+  root.querySelectorAll<HTMLElement>("[data-live-player-avatar]").forEach((container) => {
+    const image = container.querySelector<HTMLImageElement>("img");
+    if (!image) return;
+    const syncPhoto = () => {
+      container.classList.toggle("is-loaded", image.naturalWidth > 0);
+      container.classList.toggle("is-missing", image.complete && image.naturalWidth === 0);
+    };
+    image.addEventListener("load", syncPhoto, { once: true });
+    image.addEventListener("error", syncPhoto, { once: true });
+    if (image.complete) syncPhoto();
+  });
   root.querySelectorAll<HTMLButtonElement>("[data-watch-game]").forEach((button) => {
     button.addEventListener("click", () => navigate(`/espectar/${button.dataset.watchGame}`));
   });
@@ -4846,7 +4902,7 @@ function spectatorPlayerBar(
   pieces: number,
 ) {
   return `<div class="player-bar spectator-player-bar" data-player-bar="${side}">
-    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)}</b>${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span>`, "player-identity")}
+    ${playerProfileButton(player, `${avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span>`, "player-identity")}
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
   </div>`;
@@ -4923,8 +4979,8 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
       container?.setAttribute("aria-hidden", "true");
       return;
     }
-    const winner = game.winner ? game.players[game.winner] : null;
-    container.innerHTML = `<div class="board-result-card"><span class="result-icon">${winner ? "♛" : "½"}</span><span class="section-kicker">TRANSMISIÓN FINALIZADA</span><h2 class="result-winner-name">${winner ? `<span>Victoria de ${escapeHtml(winner.name)}</span>${worldTrophyMarkup(winner, "world-trophy--result")}` : "Tablas"}</h2>${winner ? worldTitleRecognitionMarkup(winner, "world-title-recognition--result") : ""}<p>${endReasonLabel(game.endReason)}</p><div class="result-summary"><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Espectadores</small><b>${spectatorCount}</b></span></div><div class="result-actions"><button class="button button--primary" type="button" data-result-live>${icon("eye")} Ver otras partidas</button><button class="button button--quiet" type="button" data-result-home>Volver al inicio</button></div></div>`;
+    const winner = game.winner && game.winner !== "draw" ? game.players[game.winner] : null;
+    container.innerHTML = `<div class="board-result-card"><span class="result-icon">${winner ? "♛" : "½"}</span><span class="section-kicker">TRANSMISIÓN FINALIZADA</span><h2 class="result-winner-name">${winner ? `<span>Victoria de ${escapeHtml(winner.name)}</span>${worldTrophyMarkup(winner, "world-trophy--result")}` : "Tablas"}</h2>${winner ? worldTitleRecognitionMarkup(winner, "world-title-recognition--result") : ""}<p>${endReasonLabel(game.endReason, game.winner)}</p><div class="result-summary"><span><small>Jugadas</small><b>${game.moveCount}</b></span><span><small>Ritmo</small><b>${game.timeControlMinutes} min</b></span><span><small>Espectadores</small><b>${spectatorCount}</b></span></div><div class="result-actions"><button class="button button--primary" type="button" data-result-live>${icon("eye")} Ver otras partidas</button><button class="button button--quiet" type="button" data-result-home>Volver al inicio</button></div></div>`;
     container.classList.add("is-visible");
     container.setAttribute("aria-hidden", "false");
     container.querySelector("[data-result-live]")?.addEventListener("click", () => navigate("/en-vivo"));
@@ -4956,7 +5012,7 @@ function mountSpectatorGame(initialGame: SpectatorGame, initialSpectatorCount: n
     const state = root.querySelector<HTMLElement>(".game-state-label");
     if (state) state.textContent = game.status === "active"
       ? `Turno de ${game.players[game.currentPlayer].name}`
-      : game.winner ? `Ganó ${game.players[game.winner].name}` : "Tablas";
+      : game.winner && game.winner !== "draw" ? `Ganó ${game.players[game.winner].name}` : "Tablas";
     renderMoves();
     renderResult();
     refreshClocks();
@@ -5029,7 +5085,7 @@ function gameStatus(game: Game) {
     return game.currentPlayer === game.playerColor ? "Tu turno" : "Turno del rival";
   }
   if (game.status === "cancelled") return "Partida cancelada";
-  if (!game.winner) return "Tablas";
+  if (!game.winner || game.winner === "draw") return "Tablas";
   return game.winner === game.playerColor ? "Victoria" : "Derrota";
 }
 
@@ -5055,6 +5111,8 @@ function mountGame(initialGame: Game) {
   let submittingMove = false;
   let clockTimer = 0;
   let syncTimer = 0;
+  let gameSyncInFlight = false;
+  let lastTimeoutSyncAt = 0;
   let rematchTimer = 0;
   let board: CmCheckersboard | null = null;
   let messages: ChatMessage[] = [];
@@ -5085,7 +5143,7 @@ function mountGame(initialGame: Game) {
           <div class="draw-offer"></div>
         </section>
         <aside class="game-sidebar">
-          <div class="game-tabs"><button class="is-active">Jugada</button><button data-chat-tab>Chat <i class="chat-unread"></i></button></div>
+          <div class="game-tabs"><button class="is-active">Jugada</button><button data-chat-tab>Chat <i class="chat-unread"></i></button><button class="game-chat-minimize" type="button" data-close-game-chat aria-label="Minimizar chat" title="Minimizar chat"><span aria-hidden="true">−</span></button></div>
           <div class="moves-panel"><div class="moves-list"></div></div>
           <div class="chat-panel">
             <div class="chat-messages"><div class="chat-placeholder">Aún no hay mensajes.<br>Saluda a tu rival.</div></div>
@@ -5174,12 +5232,31 @@ function mountGame(initialGame: Game) {
     }
     return Math.max(value, 0);
   };
+  const requestGameSync = async () => {
+    if (gameSyncInFlight) return;
+    gameSyncInFlight = true;
+    try {
+      update((await api.game(game.id)).game);
+    } catch {
+      // La siguiente señal del socket o ciclo de sincronización reintentará.
+    } finally {
+      gameSyncInFlight = false;
+    }
+  };
   const refreshClocks = () => {
     root.querySelectorAll<HTMLElement>("[data-clock]").forEach((element) => {
       const side = element.dataset.clock as Side;
       element.textContent = formatClock(clockValue(side));
       element.classList.toggle("is-low", clockValue(side) < 60_000);
     });
+    if (
+      game.status === "active" &&
+      clockValue(game.currentPlayer) <= 0 &&
+      Date.now() - lastTimeoutSyncAt >= 1_000
+    ) {
+      lastTimeoutSyncAt = Date.now();
+      void requestGameSync();
+    }
   };
 
   const renderMoves = (state: Game) => {
@@ -5224,7 +5301,7 @@ function mountGame(initialGame: Game) {
       return;
     }
     const won = state.winner === ownSide;
-    const drawn = !state.winner && state.status === "completed";
+    const drawn = state.status === "completed" && (!state.winner || state.winner === "draw");
     const ownRating = state.ratingResult?.[ownSide];
     const durationSeconds = Math.floor((Math.max(completedAt || Date.now(), new Date(state.startedAt).getTime()) - new Date(state.startedAt).getTime()) / 1000);
     const rematchLabel = incomingRematch
@@ -5238,7 +5315,7 @@ function mountGame(initialGame: Game) {
       <span class="result-icon">${drawn ? "½" : won ? "♛" : "·"}</span>
       <span class="section-kicker">PARTIDA FINALIZADA</span>
       <h2>${drawn ? "Tablas" : won ? "Victoria" : state.status === "cancelled" ? "Partida cancelada" : "Derrota"}</h2>
-      <p>${endReasonLabel(state.endReason)} Rival: <button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(opponent.username)}">@${escapeHtml(opponent.username)}</button></p>
+      <p>${endReasonLabel(state.endReason, state.winner)} Rival: <button class="inline-player-profile" type="button" data-player-profile-link="${escapeHtml(opponent.username)}">@${escapeHtml(opponent.username)}</button></p>
       <div class="result-summary"><span><small>Jugadas</small><b>${state.moveCount}</b></span><span><small>Duración</small><b>${formatDuration(durationSeconds)}</b></span><span><small>Elo Damas</small><b class="${(ownRating?.change ?? 0) > 0 ? "is-positive" : (ownRating?.change ?? 0) < 0 ? "is-negative" : ""}">${ownRating ? `${ownRating.after} (${ownRating.change >= 0 ? "+" : ""}${ownRating.change})` : "Sin cambios"}</b></span></div>
       <p class="rematch-feedback">${escapeHtml(rematchFeedback)}</p>
       <div class="result-actions"><button class="button button--primary" data-result-rematch ${rematchState === "waiting" || rematchState === "sending" ? "disabled" : ""}>${rematchLabel}</button><button class="button button--quiet" data-result-other>Otro rival</button></div>
@@ -5356,9 +5433,21 @@ function mountGame(initialGame: Game) {
     );
   };
   window.addEventListener("beforeunload", handleBeforeUnload);
+  const gameSidebar = root.querySelector<HTMLElement>(".game-sidebar");
+  const quickChatButton = root.querySelector<HTMLButtonElement>("[data-quick-chat]");
+  const setChatOpen = (open: boolean, focusInput = false) => {
+    gameSidebar?.classList.toggle("is-open", open);
+    gameSidebar?.classList.toggle("show-chat", open);
+    quickChatButton?.setAttribute("aria-expanded", String(open));
+    quickChatButton?.setAttribute("aria-label", open ? "Minimizar chat" : "Abrir chat");
+    if (open && focusInput) {
+      root.querySelector<HTMLInputElement>(".chat-form input")?.focus();
+    } else if (!open) {
+      root.querySelector<HTMLInputElement>(".chat-form input")?.blur();
+    }
+  };
   const openChat = () => {
-    root.querySelector(".game-sidebar")?.classList.toggle("is-open");
-    root.querySelector<HTMLInputElement>(".chat-form input")?.focus();
+    setChatOpen(!gameSidebar?.classList.contains("is-open"), true);
   };
   bindGameSettings({
     onChat: openChat,
@@ -5393,7 +5482,14 @@ function mountGame(initialGame: Game) {
       navigate("/jugar");
     },
   });
-  root.querySelector("[data-chat-tab]")?.addEventListener("click", () => root.querySelector(".game-sidebar")?.classList.add("show-chat"));
+  root.querySelector("[data-chat-tab]")?.addEventListener("click", () => setChatOpen(true, true));
+  root.querySelector("[data-close-game-chat]")?.addEventListener("click", () => setChatOpen(false));
+  boardElement.addEventListener("pointerdown", (event) => {
+    if (!gameSidebar?.classList.contains("is-open")) return;
+    setChatOpen(false);
+    event.preventDefault();
+    event.stopImmediatePropagation();
+  }, { capture: true });
 
   const renderMessages = (scrollToBottom = true) => {
     const container = root.querySelector<HTMLElement>(".chat-messages");
@@ -5535,8 +5631,14 @@ function mountGame(initialGame: Game) {
   socket?.on("game:updated", socketGameUpdate);
   socket?.on("game:message", socketMessage);
   socket?.on("game:spectators", socketSpectatorUpdate);
+  const handleGameVisibilityChange = () => {
+    if (document.visibilityState === "visible") void requestGameSync();
+  };
+  const handleGamePageShow = () => void requestGameSync();
+  document.addEventListener("visibilitychange", handleGameVisibilityChange);
+  window.addEventListener("pageshow", handleGamePageShow);
   clockTimer = window.setInterval(refreshClocks, 250);
-  syncTimer = window.setInterval(() => void api.game(game.id).then((response) => update(response.game)).catch(() => {}), 10_000);
+  syncTimer = window.setInterval(() => void requestGameSync(), 10_000);
   startBackgroundSound();
   update(game);
 
@@ -5544,6 +5646,8 @@ function mountGame(initialGame: Game) {
   pageCleanup = () => {
     if (pageLeaveGuard === leaveGuard) pageLeaveGuard = null;
     window.removeEventListener("beforeunload", handleBeforeUnload);
+    document.removeEventListener("visibilitychange", handleGameVisibilityChange);
+    window.removeEventListener("pageshow", handleGamePageShow);
     board?.destroy();
     window.clearInterval(clockTimer);
     window.clearInterval(syncTimer);
@@ -5600,7 +5704,7 @@ function gameQuickActions(
   const ownColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.own)!;
   const opponentColor = PIECE_COLOR_OPTIONS.find((option) => option.key === pieceColors.opponent)!;
   return `<div class="player-quick-actions">
-    <button class="quick-action" type="button" data-quick-chat aria-label="Abrir chat" ${chatAvailable ? "" : "disabled"}>${icon("chat")}</button>
+    <button class="quick-action" type="button" data-quick-chat aria-label="Abrir chat" aria-expanded="false" ${chatAvailable ? "" : "disabled"}>${icon("chat")}</button>
     <button class="quick-action" type="button" data-settings-toggle aria-label="Abrir configuración" aria-expanded="false">${icon("settings")}</button>
     <div class="game-settings-menu" data-settings-menu aria-hidden="true">
       <div class="settings-menu-title"><span>${icon("settings")}</span><b>Configuración</b><button type="button" data-settings-close aria-label="Cerrar configuración">×</button></div>
@@ -5734,7 +5838,7 @@ function playerBar(
   pieceColors = pieceColorPreferences(),
 ) {
   return `<div class="player-bar player-bar--${placement}" data-player-bar="${side}">
-    ${playerProfileButton(player, `${placement === "own" ? `<span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(player, "avatar avatar--player")}</span>` : avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)} ${placement === "own" ? "(Tú)" : ""}</b>${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span>`, "player-identity")}
+    ${playerProfileButton(player, `${placement === "own" ? `<span class="avatar-slot" data-current-user-avatar data-avatar-class="avatar avatar--player">${avatarMarkup(player, "avatar avatar--player")}</span>` : avatarMarkup(player, "avatar avatar--player")}<span><span class="player-name-line"><i title="${escapeHtml(player.countryCode)}">${flag(player.countryCode)}</i><b>${escapeHtml(player.name)} ${placement === "own" ? "(Tú)" : ""}</b>${onlineDotMarkup(player)}${worldTrophyMarkup(player, "world-trophy--game")}</span><small>@${escapeHtml(player.username)}</small></span>`, "player-identity")}
     ${playerLiveData(side, player.rating.rating, pieces)}
     <div class="turn-indicator"><i></i><span>Jugando</span></div>
     ${placement === "own" ? gameQuickActions(true, pieceColors) : ""}
@@ -5742,12 +5846,15 @@ function playerBar(
   </div>`;
 }
 
-function endReasonLabel(reason: string | null) {
+function endReasonLabel(reason: string | null, winner: Game["winner"] = null) {
+  if (reason === "board" && winner === "draw") {
+    return "Tablas automáticas: ambos jugadores tienen menos de 3 fichas y completaron 10 jugadas consecutivas sin captura.";
+  }
   const labels: Record<string, string> = {
     board: "La posición decidió la partida.",
     resignation: "La partida terminó por rendición.",
     timeout: "El reloj decidió la partida.",
-    draw: "Ambos jugadores acordaron tablas.",
+    agreement: "Ambos jugadores acordaron tablas.",
     withdrawal: "La partida terminó antes de la primera jugada.",
   };
   return labels[reason ?? ""] ?? "La partida ha concluido.";
@@ -5765,6 +5872,7 @@ async function connectRealtime() {
   if (!currentUser) return;
   socket?.disconnect();
   socket = io(SOCKET_URL, { withCredentials: true, transports: ["websocket"] });
+  socket.on("connect", refreshVisiblePresence);
   socket.on("matchmaking:matched", (game: Game) => {
     if (matchmakingTimer) void stopMatchmaking(false);
     navigate(`/partida/${game.id}`);
@@ -5778,6 +5886,7 @@ async function connectRealtime() {
     headerNotificationsUpdatedAt = 0;
     void refreshHeaderNotifications(true).catch(() => {});
   });
+  socket.on("presence:changed", applyPresenceUpdate);
   socket.on("connect_error", (error) => {
     console.warn("La conexión en vivo no está disponible; se usará una actualización alternativa.", error.message);
   });

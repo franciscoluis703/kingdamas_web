@@ -21,6 +21,7 @@ export interface User {
   memberSince?: string | null;
   avatarUrl?: string | null;
   avatarVersion?: string | null;
+  online?: boolean;
   worldTitle?: WorldTitle | null;
   premium?: {
     active: boolean;
@@ -111,7 +112,7 @@ export interface Game {
   board: BoardState;
   currentPlayer: Side;
   status: GameStatus;
-  winner: Side | null;
+  winner: Side | "draw" | null;
   moveCount: number;
   moves: Array<{ player: Side; notation: string; captures: number }>;
   version: number;
@@ -370,6 +371,7 @@ export interface LinkInvitation {
     username: string;
     rating: number;
     avatarUrl?: string | null;
+    online?: boolean;
     worldTitle?: WorldTitle | null;
   };
 }
@@ -388,6 +390,7 @@ export interface DirectInvitation {
     username: string;
     rating: number;
     avatarUrl?: string | null;
+    online?: boolean;
     worldTitle?: WorldTitle | null;
   };
 }

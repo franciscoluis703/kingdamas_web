@@ -42,7 +42,7 @@ export function avatarMarkup(user: { name: string; avatarUrl?: string | null }, 
     : `<span class="${className} avatar--fallback" aria-hidden="true">${escapeHtml(initials(user.name))}</span>`;
 }
 
-export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logout" | "chat" | "clock" | "menu" | "link" | "copy" | "share" | "settings" | "volume" | "refresh" | "camera" | "heart" | "users" | "search" | "userPlus" | "send" | "tournament" | "bell") => {
+export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logout" | "chat" | "clock" | "menu" | "link" | "copy" | "share" | "settings" | "volume" | "refresh" | "camera" | "heart" | "user" | "users" | "search" | "userPlus" | "send" | "tournament" | "bell") => {
   const paths = {
     crown: '<path d="m4 8 4 4 4-7 4 7 4-4-2 10H6L4 8Z"/><path d="M6 21h12"/>',
     home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10M9 20v-6h6v6"/>',
@@ -61,6 +61,7 @@ export const icon = (name: "crown" | "home" | "ranking" | "play" | "eye" | "logo
     refresh: '<path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8a7 7 0 0 1 11.3-1.4L20 9M4 15l2.6 2.4A7 7 0 0 0 17.9 16"/>',
     camera: '<path d="M14.5 5 13 3h-2L9.5 5H6a3 3 0 0 0-3 3v9a3 3 0 0 0 3 3h12a3 3 0 0 0 3-3V8a3 3 0 0 0-3-3h-3.5Z"/><circle cx="12" cy="12.5" r="4"/>',
     heart: '<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l1.1 1.1L12 21l7.8-7.5 1.1-1.1a5.5 5.5 0 0 0-.1-7.8Z"/>',
+    user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
     users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"/>',
     search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
     userPlus: '<path d="M15 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8" cy="7" r="4"/><path d="M19 8v6M16 11h6"/>',

@@ -7,6 +7,7 @@ import {
   sameBoard,
   samePosition,
 } from "./engine";
+import { crownColorForPiece } from "./pieceColorPreferences";
 
 interface BoardOptions {
   orientation: Side;
@@ -249,6 +250,10 @@ export class CmCheckersboard {
     const checker = document.createElement("span");
     checker.className = `checker checker--${piece.player}${piece.king ? " is-king" : ""}`;
     checker.style.setProperty("--piece-color", this.safeColor(piece.player));
+    checker.style.setProperty(
+      "--crown-color",
+      crownColorForPiece(this.options.pieceColors[piece.player]),
+    );
     checker.setAttribute("aria-hidden", "true");
     if (piece.king) checker.innerHTML = '<span class="checker-crown">♛</span>';
     return checker;

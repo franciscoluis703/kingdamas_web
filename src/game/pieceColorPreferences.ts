@@ -25,6 +25,13 @@ const PIECE_COLOR_KEYS = new Set<PieceColor>(
   PIECE_COLOR_OPTIONS.map((option) => option.key),
 );
 
+export function crownColorForPiece(color: unknown) {
+  const normalized = String(color || "").trim().toLowerCase();
+  if (normalized === "negra" || normalized === "#121b17") return "#ffffff";
+  if (normalized === "blanca" || normalized === "#edf2e8") return "#000000";
+  return "#e8b85a";
+}
+
 function isPieceColor(value: unknown): value is PieceColor {
   return typeof value === "string" && PIECE_COLOR_KEYS.has(value as PieceColor);
 }

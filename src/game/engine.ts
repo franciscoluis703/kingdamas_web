@@ -1,5 +1,8 @@
 import type { BoardState, LegalMove, MoveStep, Piece, Position, Side } from "../types";
 
+export const AUTOMATIC_DRAW_MAX_PIECES = 2;
+export const AUTOMATIC_DRAW_MOVES_WITHOUT_CAPTURE = 10;
+
 const DIRECTIONS = [
   [-1, -1],
   [-1, 1],
@@ -251,11 +254,32 @@ export function countPieces(board: BoardState) {
   return counts;
 }
 
-export function getWinner(board: BoardState, nextPlayer: Side): Side | null {
+export function countMovesWithoutCapture(moves: Array<{ captures?: number }> = []) {
+  let count = 0;
+  for (let index = moves.length - 1; index >= 0; index -= 1) {
+    if (Number(moves[index]?.captures) > 0) break;
+    count += 1;
+  }
+  return count;
+}
+
+export function getWinner(
+  board: BoardState,
+  nextPlayer: Side,
+  moves: Array<{ captures?: number }> = [],
+): Side | "draw" | null {
   const counts = countPieces(board);
   if (!counts.ivory.total) return "mahogany";
   if (!counts.mahogany.total) return "ivory";
-  return getLegalMoves(board, nextPlayer).length ? null : opponentOf(nextPlayer);
+  if (!getLegalMoves(board, nextPlayer).length) return opponentOf(nextPlayer);
+  if (
+    counts.ivory.total <= AUTOMATIC_DRAW_MAX_PIECES &&
+    counts.mahogany.total <= AUTOMATIC_DRAW_MAX_PIECES &&
+    countMovesWithoutCapture(moves) >= AUTOMATIC_DRAW_MOVES_WITHOUT_CAPTURE
+  ) {
+    return "draw";
+  }
+  return null;
 }
 
 export function moveNotation(move: LegalMove) {
